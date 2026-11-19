@@ -139,4 +139,5 @@ Ejemplo / example:
 3. ¿Se explican las diferencias de líneas base temporales entre sensores (6–12 días; ventana postsísmica)?
 4. ¿Se tratan las limitaciones (ionosfera en banda L, geometría Umbra sin DEM, imagen previa de Planet a 4.8 m)?
 5. ¿Los datos y el código son accesibles (Data and Resources, GitHub + Zenodo)?
-6. ¿Las licencias permiten publicar las figuras (Planet CC BY-NC frente a CC-BY de acceso abierto)?
+6. ¿Las licencias permiten publicar las figuras (Planet CC BY-NC; daño HOTOSM fAIr y capas combinadas CC BY-NC-SA 4.0) frente a CC-BY de acceso abierto?
+7. Citar el producto Sentinel-1 de OSU/CUNY (Scher y Van Den Hoek) si se usa.

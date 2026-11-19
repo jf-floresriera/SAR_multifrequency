@@ -54,7 +54,7 @@ def clase_normalizada(v):
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return None
     s = str(v).strip().lower().replace("-", " ").replace("_", " ")
-    if s in ("", "nan", "none", "un classified", "unclassified", "unknown"):
+    if s in ("", "nan", "none", "un classified", "unclassified", "unknown") or "no data" in s or "nodata" in s:
         return None
     if s.startswith("no ") or s in ("0", "0.0", "false", "intact") or "sin da" in s or "undamag" in s or "no visible" in s:
         return "sin_daño"
@@ -119,10 +119,21 @@ for z in ZONAS_HOT:                                        # daño fusionado fAI
         g = leer_vector(f, "HOTOSM", "damage", {"zona": z, "validado": False})
         if g is not None:
             capas.append(g)
-for f in glob.glob(f"{HF_DIR}/**/venezuela_validated_damage.geojson", recursive=True)[:1]:   # validado por personas
-    g = leer_vector(f, "HOTOSM validado/validated", "damaged", {"zona": "validado", "validado": True})
-    if g is not None:
-        capas.append(g)
+# Validación MapSwipe: el significado de 'damaged' (0–7) se toma de SCHEMAS.md; se guarda aparte, sin clasificar
+# MapSwipe validation: meaning of 'damaged' (0–7) comes from SCHEMAS.md; stored separately, not classified
+for f in glob.glob(f"{HF_DIR}/**/SCHEMAS.md", recursive=True)[:1]:
+    lineas = open(f, encoding="utf-8", errors="ignore").read().splitlines()
+    rel = [l for i_, l in enumerate(lineas) if "damaged" in l.lower() or "validat" in l.lower() or "mapswipe" in l.lower()]
+    print("\n[SCHEMAS.md] definición de la validación / validation definition:")
+    print("\n".join("   " + l for l in rel[:25]) or "   (no encontrada / not found)")
+for f in glob.glob(f"{HF_DIR}/**/venezuela_validated_damage.geojson", recursive=True)[:1]:
+    try:
+        v = gpd.read_file(f, bbox=AREA_ESTUDIO).to_crs(4326)
+        keep = [c for c in v.columns if c in ("damaged", "sources", "h3", "h3_index", "total", "count", "agreement")]
+        v[keep + ["geometry"]].to_file(GPKG, layer="validacion_mapswipe", driver="GPKG")
+        print(f"   Validación MapSwipe guardada / saved: {len(v)} celdas · columnas {keep}")
+    except Exception as e:
+        print(f"   [!] validación / validation: {e}")
 gc_ = __import__("gc"); gc_.collect()
 
 # --------------------------------------------------------------------------
@@ -148,6 +159,14 @@ if not capas:
 danio = gpd.GeoDataFrame(pd.concat(capas, ignore_index=True), crs=4326)
 del capas
 danio.to_file(GPKG, layer="edificios_danio", driver="GPKG")
+csv_bilingue(pd.DataFrame([
+    ("HOTOSM fAIr (daño por edificio / building damage)", "https://huggingface.co/datasets/hotosm/venezuela_eq_2026", "CC BY-NC-SA 4.0"),
+    ("Microsoft AI for Good Lab", "https://huggingface.co/datasets/hotosm/venezuela_eq_2026", "CC BY 4.0"),
+    ("OSU/CUNY Sentinel-1 (Scher & Van Den Hoek, experimental)", "https://huggingface.co/datasets/hotosm/venezuela_eq_2026", "citar / cite"),
+    ("MapSwipe validation", "https://huggingface.co/datasets/hotosm/venezuela_eq_2026", "CC BY-SA 4.0"),
+    ("Copernicus EMS EMSR884", "https://mapping.emergency.copernicus.eu/activations/EMSR884/", "Copernicus EMS"),
+], columns=["fuente", "url", "licencia"]).assign(fecha_acceso=pd.Timestamp.today().date().isoformat()),
+    f"{RAIZ}/05_documentacion/fuentes_danio_referencia.csv")
 resumen = danio.groupby(["fuente", "clase"]).size().unstack(fill_value=0)
 print("\nControl: valores originales → clase / original values → class")
 print(danio.groupby(["valor_original", "clase"]).size().sort_values(ascending=False).head(15).to_string())
@@ -157,7 +176,7 @@ csv_bilingue(resumen, f"{OUT}/resumen_clases_danio.csv", index=True)
 # --------------------------------------------------------------------------
 # 3. Zonas de contraste por sitio / contrast zones per site
 # --------------------------------------------------------------------------
-d_utm = danio[~danio.validado.fillna(False).astype(bool)].to_crs(CRS)
+d_utm = danio.to_crs(CRS)
 d_utm["c"] = d_utm.geometry.centroid
 # zona válida = Umbra ∩ Planet (si existen los inventarios) / valid zone = Umbra ∩ Planet
 zona_valida = None

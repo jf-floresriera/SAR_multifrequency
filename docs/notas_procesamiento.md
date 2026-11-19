@@ -1,8 +1,9 @@
-# Bitácora de procesamiento (processing log)
+# Bitácora de procesamiento / Processing log
 
-Registrar aquí cada decisión que afecte a los resultados, con fecha. Esto alimenta la sección *Methods* y *Data and Resources* del artículo.
+🇪🇸 Registrar aquí cada decisión que afecte a los resultados, con fecha. Alimenta las secciones *Methods* y *Data and Resources* del artículo.  
+🇬🇧 Record here, with date, every decision that affects the results. Feeds the *Methods* and *Data and Resources* sections of the manuscript.
 
-| Fecha | Decisión | Valor | Justificación |
+| Fecha / Date | Decisión / Decision | Valor / Value | Justificación / Rationale |
 |---|---|---|---|
 | 2026-11-19 | Convención de signo LOS | + = acercamiento al satélite | Común a C, L y X; validar con GNSS CCS1 |
 | 2026-11-19 | Umbral de coherencia | 0.30 | Enmascara mar, bosque denso y decorrelación cerca de la ruptura |
@@ -11,7 +12,7 @@ Registrar aquí cada decisión que afecte a los resultados, con fecha. Esto alim
 | 2026-11-19 | Sentinel-1 HyP3 | looks 10x2 (~40 m), look vectors | Necesario para E/U y para escala urbana |
 | 2026-11-19 | NISAR GUNW cosísmicos | 061A, 162A, 126D (+054D) | Filtro: fecha_ref < sismo < fecha_sec y cobertura de La Guaira |
 
-## Pendientes
+## Pendientes / To do
 - [ ] Coordenadas exactas de CCS1 (ficha NGL / IGVSB)
 - [ ] ALOS-2 ScanSAR L1.1: descargar (ASF/JAXA) y procesar con GMTSAR o ISCE2
 - [ ] Planet: confirmar con la revista la compatibilidad CC BY-NC vs. acceso abierto CC-BY

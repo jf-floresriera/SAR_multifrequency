@@ -136,6 +136,7 @@ def guardar_bilingue(dibujar, base, formatos=("png",), dpi=300, mostrar=True):
         if mostrar and idioma == "es":
             plt.show()
         plt.close(fig)
+    print("   guardado / saved:", ", ".join(os.path.basename(r) for r in rutas))
     return rutas
 
 
@@ -148,12 +149,14 @@ class _Tee(io.TextIOBase):
 
     def write(self, s):
         for f in self.flujos:
-            f.write(s)
+            if not getattr(f, "closed", False):
+                f.write(s)
         return len(s)
 
     def flush(self):
         for f in self.flujos:
-            f.flush()
+            if not getattr(f, "closed", False):
+                f.flush()
 
 
 def correr(script, carpeta_logs, src, notebook="", version=""):

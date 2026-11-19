@@ -55,6 +55,9 @@ LADO_M = _g.get("LADO_M", 1000)
 RES_M = _g.get("RES_M", 0.5)
 ZOOM_M = _g.get("ZOOM_M", 300)
 SITIOS_A_PROCESAR = _g.get("SITIOS_A_PROCESAR", None)
+# Centros de acercamiento manuales (lat, lon) sobre edificios colapsados conocidos; si no, automático
+# Manual zoom centres (lat, lon) on known collapsed buildings; otherwise automatic
+ZOOM_CENTROS = _g.get("ZOOM_CENTROS", {})
 COBERTURA_MIN = 0.90
 SALIDA = "./umbra_planet_sitios"
 os.makedirs(SALIDA, exist_ok=True)
@@ -149,17 +152,40 @@ def estirar(x, p=(2, 98)):
 
 def barra(ax, n, res, metros):
     L = metros / res
-    x0, y0 = n * 0.05, n * 0.93
-    ax.plot([x0, x0 + L], [y0, y0], color="white", lw=4, solid_capstyle="butt")
-    ax.plot([x0, x0 + L], [y0, y0], color="black", lw=1.5, solid_capstyle="butt")
-    ax.text(x0 + L / 2, y0 - n * 0.03, f"{metros} m", color="white", ha="center", fontsize=7.5,
-            weight="bold", path_effects=[pe.withStroke(linewidth=2, foreground="black")])
+    x0, y0 = n * 0.05, n * 0.92
+    ax.add_patch(Rectangle((x0 - n * 0.02, y0 - n * 0.075), L + n * 0.04, n * 0.11, fc="white", ec="none",
+                           alpha=0.85, zorder=4))
+    ax.plot([x0, x0 + L], [y0, y0], color="black", lw=2, solid_capstyle="butt", zorder=5)
+    ax.text(x0 + L / 2, y0 - n * 0.015, f"{metros} m", color="black", ha="center", va="bottom",
+            fontsize=7, zorder=5)
 
 
-def recorte(a, frac):
-    """Centro de la imagen con fracción `frac` del lado / central crop."""
-    n = a.shape[0]; k = int(n * frac / 2); c = n // 2
-    return a[c - k:c + k, c - k:c + k]
+def recorte(a, frac, centro=None):
+    """Recorte de lado frac·n alrededor de `centro` (fila, col) / crop of side frac·n around `centro`."""
+    n = a.shape[0]; k = int(n * frac / 2)
+    r, c = centro if centro else (n // 2, n // 2)
+    r = int(min(max(r, k), n - k)); c = int(min(max(c, k), n - k))
+    return a[r - k:r + k, c - k:c + k]
+
+
+def centro_zoom(pre, post, frac, paso=10):
+    """Centro del acercamiento donde más aclara la imagen después del sismo (polvo/escombros),
+    excluyendo mar y sombras. Center of the zoom where the after image brightens most (dust/debris)."""
+    n = pre.shape[0]
+    if post is None:
+        return n // 2, n // 2
+    a = np.nanmean(pre, axis=-1)[::paso, ::paso]
+    b = np.nanmean(post, axis=-1)[::paso, ::paso]
+    d = np.nan_to_num(b - a)
+    d[(a < 0.18) | (b >= 0.999)] = 0           # mar/sombra y zonas sin dato / sea-shadow and no-data
+    w = max(int(n * frac / paso), 3)
+    sc = uniform_filter(np.clip(d, 0, None), w)
+    m = w // 2 + 1
+    sc[:m] = 0; sc[-m:] = 0; sc[:, :m] = 0; sc[:, -m:] = 0
+    if sc.max() <= 0:
+        return n // 2, n // 2
+    rr, cc = np.nonzero(sc >= 0.95 * sc.max())      # centro de la meseta de máximos / plateau centre
+    return int(rr.mean() * paso), int(cc.mean() * paso)
 
 
 # ---------------------------------------------------------------------------
@@ -317,8 +343,10 @@ for nombre, (lat, lon) in SITIOS.items():
     pl = pl.sort_values(["cob", "gsd" if "gsd" in pl else "fecha"], ascending=[False, True])
 
     paneles = []
+    pre_rgb, post_rgb = None, None
     try:
-        paneles.append((rgb(leer(PLANET_PRE, cx, cy, [1, 2, 3], LADO_M)), None, None,
+        pre_rgb = rgb(leer(PLANET_PRE, cx, cy, [1, 2, 3], LADO_M))
+        paneles.append((pre_rgb, None, None,
                         lambda i: T("pl_antes", i)))
         if len(pl):
             t = pl.fecha.iloc[0].tz_convert(HORA_LOCAL)
@@ -330,7 +358,8 @@ for nombre, (lat, lon) in SITIOS.items():
                     break
                 extra = leer(u_, cx, cy, [1, 2, 3], LADO_M)
                 post[:, hueco] = extra[:, hueco]
-            paneles.append((rgb(post), None, None,
+            post_rgb = rgb(post)
+            paneles.append((post_rgb, None, None,
                             lambda i, t=t, g_=g_: T("pl_despues", i, t=f"{t:%d %b %H:%M}", g=f"{g_:.2f}")))
         usadas_txt = ""
         if tiene_umbra:
@@ -363,43 +392,93 @@ for nombre, (lat, lon) in SITIOS.items():
         print(f"[!] {nombre}: {e}")
         continue
 
-    # Figura: fila 1 = recorte completo, fila 2 = acercamiento / row 1 = full chip, row 2 = zoom
+    # Centro del acercamiento: manual (ZOOM_CENTROS) o automático / zoom centre: manual or automatic
+    frac = ZOOM_M / LADO_M
+    npx = paneles[0][0].shape[0]
+    if nombre in ZOOM_CENTROS:
+        zlat, zlon = ZOOM_CENTROS[nombre]
+        zx, zy = A_UTM.transform(zlon, zlat)
+        zc = (int((cy + LADO_M / 2 - zy) / LADO_M * npx), int((zx - (cx - LADO_M / 2)) / LADO_M * npx))
+        modo_zoom = "manual"
+    else:
+        zc = centro_zoom(pre_rgb, post_rgb, frac)
+        modo_zoom = "auto"
+    zx_m = cx - LADO_M / 2 + zc[1] / npx * LADO_M
+    zy_m = cy + LADO_M / 2 - zc[0] / npx * LADO_M
+    zlon_, zlat_ = Transformer.from_crs(32619, 4326, always_xy=True).transform(zx_m, zy_m)
+
+    # Figura estilo SRL: cuadrícula compacta, etiquetas (a)(b)… fuera arriba-izquierda, sin título
+    # SRL-style figure: compact grid, (a)(b)… labels outside top-left, no title (text goes in the caption)
     def _fig(idioma):
         n = len(paneles)
-        fig, axs = plt.subplots(2, n, figsize=(4.0 * n, 8.4), squeeze=False)
-        frac = ZOOM_M / LADO_M
+        ancho = 7.2                                  # pulgadas ≈ ancho de página / page width
+        lado = (ancho - 0.1) / n
+        fig = plt.figure(figsize=(ancho, 2 * lado + 0.70))
+        gs = fig.add_gridspec(2, n, wspace=0.04, hspace=0.10, left=0.005, right=0.995,
+                              top=1 - 0.18 / (2 * lado + 0.70), bottom=0.60 / (2 * lado + 0.70))
+        letras = "abcdefghijklmnop"
         for j, (img, cmap, lim, tit) in enumerate(paneles):
             res_img = LADO_M / img.shape[1]
             kw = dict(cmap=cmap, interpolation="nearest")
             if lim:
                 kw.update(vmin=lim[0], vmax=lim[1])
-            im = axs[0, j].imshow(img, **kw)
-            axs[0, j].set_title(tit(idioma), loc="left", fontsize=8)
-            k = img.shape[0] * frac / 2; c0 = img.shape[0] / 2
-            axs[0, j].add_patch(Rectangle((c0 - k, c0 - k), 2 * k, 2 * k, fill=False, ec="yellow", lw=1.2))
-            barra(axs[0, j], img.shape[1], res_img, 200)
-            axs[1, j].imshow(recorte(img, frac), **kw)
-            barra(axs[1, j], recorte(img, frac).shape[1], res_img, 50)
-            if cmap == "RdBu_r" or (lim and cmap == "gray"):
-                fig.colorbar(im, ax=axs[:, j], fraction=0.03, pad=0.01)
-            for ax in axs[:, j]:
+            for fila in (0, 1):
+                ax = fig.add_subplot(gs[fila, j])
+                dato = img if fila == 0 else recorte(img, frac, zc)
+                im = ax.imshow(dato, **kw)
                 ax.set_xticks([]); ax.set_yticks([])
-        axs[1, 0].set_ylabel(T("zoom", idioma, z=ZOOM_M), fontsize=9)
-        nota = T("desplazado", idioma, m=desp) if desp > 0 else ""
-        fig.suptitle(T("sitio_tit", idioma, s=nombre.replace("_", " "), lat=lat, lon=lon, L=LADO_M, c=cob, d=nota),
-                     x=0.01, ha="left", fontsize=10.5, weight="bold")
-        fig.text(0.01, 0.005, "Contains Umbra open data, CC BY 4.0 · Imagery © Planet Labs PBC, CC BY-NC 4.0"
-                 + (f" · Umbra: {usadas_txt}" if usadas_txt else ""), fontsize=6.5, color="0.35")
+                for sp in ax.spines.values():
+                    sp.set_linewidth(0.5)
+                ax.text(0.0, 1.015, f"({letras[fila * n + j]})", transform=ax.transAxes,
+                        ha="left", va="bottom", fontsize=8, weight="bold")
+                if fila == 0:
+                    k = img.shape[0] * frac / 2
+                    r0, c0 = min(max(zc[0], k), img.shape[0] - k), min(max(zc[1], k), img.shape[1] - k)
+                    ax.add_patch(Rectangle((c0 - k, r0 - k), 2 * k, 2 * k, fill=False, ec="#FFD400", lw=1.0))
+                    barra(ax, img.shape[1], res_img, 200)
+                else:
+                    barra(ax, dato.shape[1], res_img, 50)
+                if fila == 1 and (cmap == "RdBu_r" or (lim and cmap == "gray")):
+                    cax = ax.inset_axes([0.05, -0.10, 0.9, 0.045])
+                    cb = fig.colorbar(im, cax=cax, orientation="horizontal")
+                    cb.ax.tick_params(labelsize=6, length=2)
+        fig.text(0.005, 0.005, "Umbra: CC BY 4.0 · Planet Labs PBC: CC BY-NC 4.0", fontsize=6, color="0.35")
         return fig
 
-    rutas = guardar_bilingue(_fig, f"{SALIDA}/{nombre}_v2", dpi=200)
-    ruta = rutas[0]
+    rutas = guardar_bilingue(_fig, f"{SALIDA}/{nombre}_v3", formatos=("png", "pdf"), dpi=300)
+
+    # Pie de figura bilingüe (SRL: la descripción va en el pie, no en la figura) / bilingual caption
+    letras = "abcdefghijklmnop"
+    for idioma in ("es", "en"):
+        n = len(paneles)
+        partes = [f"({letras[j]}) {p[3](idioma).split(') ', 1)[-1]}" for j, p in enumerate(paneles)]
+        if idioma == "es":
+            txt = (f"{nombre.replace('_', ' ')} ({lat:.4f}° N, {abs(lon):.4f}° O). Fila superior: recorte de "
+                   f"{LADO_M} m × {LADO_M} m; fila inferior ({letras[n]})–({letras[2 * n - 1]}): acercamiento de "
+                   f"{ZOOM_M} m (recuadro amarillo, centrado en {zlat_:.4f}° N, {abs(zlon_):.4f}° O, selección {modo_zoom}). "
+                   + "; ".join(partes) + f". Cobertura Umbra {cob:.0%}"
+                   + (f"; recorte desplazado {desp:.0f} m respecto al sitio" if desp else "") + ". "
+                   + (f"Escenas Umbra: {usadas_txt}. " if usadas_txt else "")
+                   + "Contiene datos abiertos de Umbra (CC BY 4.0); imágenes © Planet Labs PBC (CC BY-NC 4.0).")
+        else:
+            txt = (f"{nombre.replace('_', ' ')} ({lat:.4f}° N, {abs(lon):.4f}° W). Top row: {LADO_M} m × {LADO_M} m "
+                   f"chip; bottom row ({letras[n]})–({letras[2 * n - 1]}): {ZOOM_M} m zoom (yellow box, centred at "
+                   f"{zlat_:.4f}° N, {abs(zlon_):.4f}° W, {modo_zoom} selection). " + "; ".join(partes)
+                   + f". Umbra coverage {cob:.0%}" + (f"; chip shifted {desp:.0f} m from the site" if desp else "")
+                   + ". " + (f"Umbra scenes: {usadas_txt}. " if usadas_txt else "")
+                   + "Contains Umbra open data (CC BY 4.0); imagery © Planet Labs PBC (CC BY-NC 4.0).")
+        open(f"{SALIDA}/{nombre}_v3_pie_{idioma}.txt", "w", encoding="utf-8").write(txt + "\n")
+
     resumen.append(dict(sitio=nombre, umbra=tiene_umbra, cobertura=round(cob, 3),
                         desplazamiento_m=round(desp), escenas_umbra=usadas_txt,
-                        planet=pl["id"].iloc[0] if len(pl) else None, figura=ruta))
-    del paneles
+                        planet=pl["id"].iloc[0] if len(pl) else None, figura=rutas[0],
+                        zoom_lat=round(zlat_, 5), zoom_lon=round(zlon_, 5), zoom_modo=modo_zoom))
+    del paneles, pre_rgb, post_rgb
     gc.collect()
-    print(f"✓ {nombre}: cobertura {cob:.0%}" + (f", desplazado {desp:.0f} m" if desp else ""))
+    print(f"✓ {nombre}: cobertura {cob:.0%}" + (f", desplazado {desp:.0f} m" if desp else "")
+          + f" · zoom {modo_zoom} ({zlat_:.4f}, {zlon_:.4f})")
+    for r_ in rutas:
+        print("    ", r_)
 
-csv_bilingue(pd.DataFrame(resumen), f"{SALIDA}/resumen_sitios_v2.csv")
-print(f"\nListo / Done → {SALIDA}/resumen_sitios_v2.csv")
+csv_bilingue(pd.DataFrame(resumen), f"{SALIDA}/resumen_sitios_v3.csv")
+print(f"\nListo / Done → {SALIDA}/resumen_sitios_v3.csv · figuras _es/_en (.png, .pdf) y pies de figura _pie_es/_pie_en.txt")

@@ -16,6 +16,7 @@
 
 | 🇬🇧 English | 🇪🇸 Español |
 |---|---|
+| 📘 **Project master document / Documento maestro:** [`docs/PROYECTO.md`](docs/PROYECTO.md) · **Manuscript / Manuscrito:** [`manuscrito/`](manuscrito/) · **SRL checklist:** [`manuscrito/CHECKLIST_SRL.md`](manuscrito/CHECKLIST_SRL.md) | 📘 Documento maestro, manuscrito y lista de verificación SRL (mismos enlaces). |
 | Reproducible, open-data workflow for a manuscript in preparation for the *Seismological Research Letters* Focus Section on the **2026 Venezuela, Colombia and Panama Earthquakes**. | Flujo de trabajo reproducible y con datos abiertos para un artículo en preparación para la sección especial de *Seismological Research Letters* sobre los **sismos de 2026 en Venezuela, Colombia y Panamá**. |
 
 ---

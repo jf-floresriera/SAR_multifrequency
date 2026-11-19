@@ -4,6 +4,9 @@ Sentinel-1: pares cosísmicos y (opcional) envío a HyP3 / coseismic pairs and (
 Usar con %run -i para reutilizar `usuario` y `clave`. Fijar ENVIAR_HYP3 = True para enviar.
 Use with %run -i to reuse `usuario` and `clave`. Set ENVIAR_HYP3 = True to submit.
 """
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
+from comun import T, csv_bilingue, guardar_bilingue
 import asf_search as asf
 import pandas as pd
 from shapely.geometry import box, shape
@@ -33,7 +36,7 @@ for (t, d), g in s1.groupby(["track", "dir"]):
                       fecha_sec=b.fecha.date(), dias=round((b.fecha - a.fecha).total_seconds() / 86400),
                       cubre_LaGuaira=min(a["cubre_%"], b["cubre_%"])))
 pares = pd.DataFrame(pares).sort_values("cubre_LaGuaira", ascending=False)
-pares.to_csv("s1_pares_cosismicos.csv", index=False)
+csv_bilingue(pares, "s1_pares_cosismicos.csv")
 print(pares.to_string(index=False))
 
 if ENVIAR_HYP3:

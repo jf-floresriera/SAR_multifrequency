@@ -23,6 +23,9 @@ Uso en Colab (después de autenticar `session` como en el notebook):
 Salidas en ./nisar_filtrado/: nisar_productos.csv, nisar_cosismicos.csv,
   nisar_lista_descarga.txt, nisar_huellas.geojson, nisar_mapa_cobertura.png
 """
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
+from comun import T, csv_bilingue, guardar_bilingue
 import json
 import os
 import re
@@ -148,7 +151,7 @@ if not filas:
 
 gdf = gpd.GeoDataFrame(filas, geometry="geometry", crs="EPSG:4326")
 gdf = gdf.sort_values(["nivel", "track", "fecha_ref"]).reset_index(drop=True)
-gdf.drop(columns="geometry").to_csv(f"{SALIDA}/nisar_productos.csv", index=False)
+csv_bilingue(gdf.drop(columns="geometry"), f"{SALIDA}/nisar_productos.csv")
 gdf[["nivel", "nombre", "track", "tipo", "geometry"]].to_file(
     f"{SALIDA}/nisar_huellas.geojson", driver="GeoJSON")
 
@@ -161,7 +164,7 @@ print(gunw.groupby(["tipo", "track"]).size().to_string())
 
 cos = gunw[(gunw.tipo == "COSISMICO") & (gunw["cubre_LaGuaira_%"] > 0)].copy()
 cos = cos.sort_values(["dias", "cubre_LaGuaira_%"], ascending=[True, False])
-cos.drop(columns="geometry").to_csv(f"{SALIDA}/nisar_cosismicos.csv", index=False)
+csv_bilingue(cos.drop(columns="geometry"), f"{SALIDA}/nisar_cosismicos.csv")
 
 print(f"\n=== {len(cos)} GUNW COSÍSMICOS que tocan La Guaira ===")
 cols = ["track", "frame", "fecha_ref", "fecha_sec", "dias", "cubre_LaGuaira_%",
@@ -197,24 +200,27 @@ try:
     import contextily as cx
     import matplotlib.pyplot as plt
 
-    fig, ax = plt.subplots(figsize=(13, 7))
     g3857 = gdf.to_crs("EPSG:3857")
     colores = {"COSISMICO": "#d62728", "PRE-SISMICO": "#7f7f7f", "POST-SISMICO": "#1f77b4"}
-    for tipo, color in colores.items():
-        sub = g3857[(g3857.nivel == "GUNW") & (g3857.tipo == tipo)]
-        if len(sub):
-            sub.boundary.plot(ax=ax, color=color, linewidth=1.2, label=f"GUNW {tipo.lower()}")
-    gpd.GeoSeries([ROI_GUAIRA], crs="EPSG:4326").to_crs("EPSG:3857").boundary.plot(
-        ax=ax, color="yellow", linewidth=2.5, label="ROI La Guaira")
-    if umbra is not None:
-        umbra.to_crs("EPSG:3857").plot(ax=ax, color="cyan", alpha=0.6, label="Umbra (X)")
-    cx.add_basemap(ax, source=cx.providers.Esri.WorldImagery, attribution_size=6)
-    ax.legend(loc="lower left", fontsize=9)
-    ax.set_title("Cobertura NISAR (banda L) y Umbra (banda X) – Sismo de Venezuela 24/06/2026")
-    ax.set_axis_off()
-    plt.tight_layout()
-    plt.savefig(f"{SALIDA}/nisar_mapa_cobertura.png", dpi=300)
-    plt.show()
+
+    def _mapa(idioma):
+        fig, ax = plt.subplots(figsize=(13, 7))
+        for tipo, color in colores.items():
+            sub = g3857[(g3857.nivel == "GUNW") & (g3857.tipo == tipo)]
+            if len(sub):
+                sub.boundary.plot(ax=ax, color=color, linewidth=1.2, label=T(f"gunw_{tipo}", idioma))
+        gpd.GeoSeries([ROI_GUAIRA], crs="EPSG:4326").to_crs("EPSG:3857").boundary.plot(
+            ax=ax, color="yellow", linewidth=2.5, label=T("roi_guaira", idioma))
+        if umbra is not None:
+            umbra.to_crs("EPSG:3857").plot(ax=ax, color="cyan", alpha=0.6, label="Umbra (X)")
+        cx.add_basemap(ax, source=cx.providers.Esri.WorldImagery, attribution_size=6)
+        ax.legend(loc="lower left", fontsize=9)
+        ax.set_title(T("nisar_mapa_tit", idioma))
+        ax.set_axis_off()
+        fig.tight_layout()
+        return fig
+
+    print("Mapas / maps:", guardar_bilingue(_mapa, f"{SALIDA}/nisar_mapa_cobertura"))
 except Exception as e:
     print(f"(Mapa omitido: {e})")
 

@@ -4,6 +4,9 @@ Descarga a Drive: NISAR (GUNW cosísmicos), Umbra (GEC) y Sentinel-1 HyP3. Se pu
 Download to Drive: NISAR (coseismic GUNW), Umbra (GEC) and Sentinel-1 HyP3. Safe to re-run.
 Usar con %run -i (necesita `session`, `usuario`, `clave`). ESPERAR_HYP3 = False para no bloquear.
 """
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
+from comun import T, csv_bilingue, guardar_bilingue
 import os, shutil
 from datetime import date
 import asf_search as asf
@@ -57,6 +60,6 @@ for nombre in ["S1_025D_cosismico", "S1_033A_cosismico"]:
     else:
         print(f"   {nombre}: aún no terminado / not finished yet -> {jobs}")
 
-pd.DataFrame(registro, columns=["fuente", "producto"]).assign(fecha_acceso=date.today().isoformat()).to_csv(
-    f"{DOC}/registro_descargas.csv", index=False)
+csv_bilingue(pd.DataFrame(registro, columns=["fuente", "producto"]).assign(fecha_acceso=date.today().isoformat()),
+             f"{DOC}/registro_descargas.csv")
 print("Listo / Done -> 05_documentacion/registro_descargas.csv")

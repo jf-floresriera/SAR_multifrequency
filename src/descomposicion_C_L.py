@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
 """Descomposición Este/Vertical (C y L), validación GNSS y figura borrador / East/Up decomposition (C and L), GNSS check and draft figure.
 Fijar CCS1_LON, CCS1_LAT antes de %run -i para validar con GNSS."""
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
+from comun import T, csv_bilingue, guardar_bilingue
 import os
 RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR")
 import glob
@@ -89,14 +92,19 @@ if CCS1_LON is not None:
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 ext = [XMIN/1e3, XMAX/1e3, YMIN/1e3, YMAX/1e3]
-fig, axs = plt.subplots(2, 3, figsize=(16, 6.5), constrained_layout=True)
-paneles = [(E_C, "Sentinel-1 (C) · Este"), (E_L, "NISAR (L) · Este"), (E_L - E_C, "L − C · Este"),
-           (U_C, "Sentinel-1 (C) · Vertical"), (U_L, "NISAR (L) · Vertical"), (U_L - U_C, "L − C · Vertical")]
-for ax, (a, t) in zip(axs.flat, paneles):
-    lim = np.nanpercentile(np.abs(a), 98) if np.isfinite(a).any() else 1
-    im = ax.imshow(a, extent=ext, cmap="RdBu_r", norm=TwoSlopeNorm(0, -lim, lim))
-    ax.set_title(t, loc="left", fontsize=10); ax.set_xlabel("Este UTM 19N (km)"); ax.set_ylabel("Norte (km)")
-    fig.colorbar(im, ax=ax, shrink=0.8, label="m")
+datos = [(E_C, "E_C"), (E_L, "E_L"), (E_L - E_C, "E_LC"), (U_C, "U_C"), (U_L, "U_L"), (U_L - U_C, "U_LC")]
+
+
+def _fig(idioma):
+    fig, axs = plt.subplots(2, 3, figsize=(16, 6.5), constrained_layout=True)
+    for ax, (a, clave) in zip(axs.flat, datos):
+        lim = np.nanpercentile(np.abs(a), 98) if np.isfinite(a).any() else 1
+        im = ax.imshow(a, extent=ext, cmap="RdBu_r", norm=TwoSlopeNorm(0, -lim, lim))
+        ax.set_title(T(clave, idioma), loc="left", fontsize=10)
+        ax.set_xlabel(T("este_km", idioma)); ax.set_ylabel(T("norte_km", idioma))
+        fig.colorbar(im, ax=ax, shrink=0.8, label="m")
+    return fig
+
+
 os.makedirs(f"{RAIZ}/04_figuras/borradores", exist_ok=True)
-plt.savefig(f"{RAIZ}/04_figuras/borradores/descomposicion_C_vs_L.png", dpi=200)
-plt.show()
+print(guardar_bilingue(_fig, f"{RAIZ}/04_figuras/borradores/descomposicion_C_vs_L", formatos=("png", "pdf"), dpi=200))

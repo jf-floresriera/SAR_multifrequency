@@ -16,6 +16,9 @@ Uso en Colab:
   !pip install -q boto3 pandas geopandas shapely contextily matplotlib
   !python umbra_inventario.py
 """
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
+from comun import T, csv_bilingue, guardar_bilingue
 import json
 import os
 from collections import defaultdict
@@ -113,8 +116,8 @@ por_carpeta = defaultdict(list)
 for key, size, fecha in todas:
     por_carpeta[os.path.dirname(key)].append((key, size, fecha))
 
-pd.DataFrame(todas, columns=["key", "bytes", "last_modified"]).to_csv(
-    f"{SALIDA}/umbra_listado_completo.csv", index=False)
+csv_bilingue(pd.DataFrame(todas, columns=["key", "bytes", "last_modified"]),
+             f"{SALIDA}/umbra_listado_completo.csv")
 
 # ---------------------------------------------------------------------------
 # 2-3. Leer metadatos de cada adquisición
@@ -217,7 +220,7 @@ for c in ["incidencia_deg", "squint_deg", "graze_deg", "azimut_deg", "res_rango_
 df["inicio_utc"] = pd.to_datetime(df["inicio_utc"], errors="coerce", utc=True)
 df = df.sort_values("inicio_utc").reset_index(drop=True)
 
-df.to_csv(f"{SALIDA}/umbra_inventario.csv", index=False)
+csv_bilingue(df, f"{SALIDA}/umbra_inventario.csv")
 print(f"\n{len(df)} adquisiciones con metadatos -> {SALIDA}/umbra_inventario.csv")
 print(df[["task_id", "inicio_utc", "satelite", "incidencia_deg", "squint_deg",
           "direccion_mirada", "lat_centro", "lon_centro", "productos"]].to_string())
@@ -257,7 +260,7 @@ for (i, a), (j, b) in combinations(ok.iterrows(), 2):
             "ambos_SICD": "SICD" in a.productos and "SICD" in b.productos,
         })
 pares = pd.DataFrame(pares)
-pares.to_csv(f"{SALIDA}/umbra_pares_candidatos.csv", index=False)
+csv_bilingue(pares, f"{SALIDA}/umbra_pares_candidatos.csv")
 print(f"\nPares con geometría repetida (candidatos a coherencia/CCD): {len(pares)}")
 if len(pares):
     print(pares.to_string())
@@ -272,20 +275,23 @@ try:
 
     g = gpd.GeoDataFrame(ok, geometry=gpd.points_from_xy(ok.lon_centro, ok.lat_centro),
                          crs="EPSG:4326").to_crs("EPSG:3857")
-    fig, ax = plt.subplots(figsize=(12, 7))
     dias = (ok["inicio_utc"] - sismo).dt.total_seconds() / 86400
-    sc = ax.scatter(g.geometry.x, g.geometry.y, c=dias, cmap="viridis", s=90,
-                    edgecolor="k", linewidth=0.6, zorder=3)
-    for _, r in g.iterrows():
-        ax.annotate(r.task_id[:8], (r.geometry.x, r.geometry.y), xytext=(4, 4),
-                    textcoords="offset points", fontsize=7, zorder=4)
-    cx.add_basemap(ax, source=cx.providers.Esri.WorldImagery, attribution_size=6)
-    fig.colorbar(sc, ax=ax, label="Días desde el sismo")
-    ax.set_title("Adquisiciones Umbra (banda X) – Sismo de Venezuela 2026\n"
-                 "Contains Umbra open data, licensed under CC BY 4.0", fontsize=11)
-    ax.set_axis_off()
-    plt.tight_layout()
-    plt.savefig(f"{SALIDA}/umbra_mapa_adquisiciones.png", dpi=300)
-    print(f"\nMapa guardado en {SALIDA}/umbra_mapa_adquisiciones.png")
+
+    def _mapa(idioma):
+        fig, ax = plt.subplots(figsize=(12, 7))
+        sc = ax.scatter(g.geometry.x, g.geometry.y, c=dias, cmap="viridis", s=90,
+                        edgecolor="k", linewidth=0.6, zorder=3)
+        for _, r in g.iterrows():
+            ax.annotate(r.task_id[:8], (r.geometry.x, r.geometry.y), xytext=(4, 4),
+                        textcoords="offset points", fontsize=7, zorder=4)
+        cx.add_basemap(ax, source=cx.providers.Esri.WorldImagery, attribution_size=6)
+        fig.colorbar(sc, ax=ax, label=T("dias_desde_sismo", idioma))
+        ax.set_title(T("umbra_mapa_tit", idioma) + "\nContains Umbra open data, licensed under CC BY 4.0", fontsize=11)
+        ax.set_axis_off()
+        fig.tight_layout()
+        return fig
+
+    rutas = guardar_bilingue(_mapa, f"{SALIDA}/umbra_mapa_adquisiciones")
+    print("\nMapas / maps:", rutas)
 except Exception as e:
     print(f"(Mapa omitido: {e})")

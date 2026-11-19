@@ -34,7 +34,9 @@
 
 ## 3 · Workflow / Flujo de trabajo
 
-<p align="center"><img src="docs/img/flujo_trabajo.gif" width="560" alt="Animated workflow / Flujo animado: datos abiertos, inventario, InSAR C y L, daño X + óptico, Este/Vertical con validación GNSS, integración y publicación"></p>
+| 🇪🇸 Español | 🇬🇧 English |
+|---|---|
+| <img src="docs/img/flujo_trabajo_es.gif" width="400" alt="Flujo de trabajo animado"> | <img src="docs/img/flujo_trabajo_en.gif" width="400" alt="Animated workflow"> |
 
 | Step / Paso | 🇬🇧 What is done | 🇪🇸 Qué se hace | Code / Código |
 |---|---|---|---|
@@ -47,7 +49,9 @@
 
 ## 4 · Data / Datos
 
-<p align="center"><img src="docs/img/linea_tiempo_sensores.gif" width="760" alt="Animated timeline / Línea de tiempo animada de las adquisiciones, 11 jun – 6 jul 2026"></p>
+| 🇪🇸 Español | 🇬🇧 English |
+|---|---|
+| <img src="docs/img/linea_tiempo_sensores_es.gif" width="420" alt="Línea de tiempo animada de adquisiciones"> | <img src="docs/img/linea_tiempo_sensores_en.gif" width="420" alt="Animated acquisition timeline"> |
 
 | Band / Banda (λ) | Sensor | 🇬🇧 What we use · 🇪🇸 Qué usamos | Dates / Fechas (2026) | Licence / Licencia |
 |---|---|---|---|---|
@@ -59,7 +63,9 @@
 | Optical / Óptico | Sentinel-2 L2A | True colour / color verdadero | Jun–Jul | Copernicus |
 | GNSS | CCS1 (+ others / otras) | Coseismic offsets for validation / desplazamientos para validar | — | Cited / citado |
 
-<p align="center"><img src="docs/img/mapa_umbra_por_dia.gif" width="760" alt="Animated map of the 26 Umbra collects / Mapa animado de las 26 escenas Umbra, día por día"></p>
+| 🇪🇸 Español | 🇬🇧 English |
+|---|---|
+| <img src="docs/img/mapa_umbra_por_dia_es.gif" width="420" alt="Mapa animado de las 26 escenas Umbra"> | <img src="docs/img/mapa_umbra_por_dia_en.gif" width="420" alt="Animated map of the 26 Umbra collects"> |
 
 | 🇬🇧 | 🇪🇸 |
 |---|---|
@@ -70,14 +76,21 @@
 > 🇬🇧 First-pass figures from the exploratory notebook (Sentinel-1 track 033A at 80 m, NISAR GUNW). They will be replaced by the harmonised C/L products of step 3.
 > 🇪🇸 Figuras de la primera aproximación (Sentinel-1 track 033A a 80 m, NISAR GUNW). Se reemplazarán por los productos armonizados C/L del paso 3.
 
-| | |
+| 🇪🇸 Español | 🇬🇧 English |
 |---|---|
-| <img src="docs/img/prelim_cobertura_nisar_umbra.jpg" width="420" alt="NISAR GUNW and Umbra coverage / Cobertura NISAR y Umbra"> | <img src="docs/img/prelim_mapa_umbra.jpg" width="420" alt="Umbra acquisitions / Adquisiciones Umbra"> |
-| **🇬🇧** NISAR GUNW footprints (co-, pre-, post-seismic) and Umbra collects. **🇪🇸** Huellas GUNW de NISAR (co, pre y postsísmicas) y escenas Umbra. | **🇬🇧** Umbra collects coloured by days after the earthquake. **🇪🇸** Escenas Umbra coloreadas por días desde el sismo. |
-| <img src="docs/img/prelim_s1_coherencia_fase_los.jpg" width="420" alt="Sentinel-1 coherence, wrapped phase and LOS / coherencia, fase y LOS"> | <img src="docs/img/prelim_s1_zooms_guaira.jpg" width="420" alt="Sentinel-1 zooms La Guaira / acercamientos La Guaira"> |
-| **🇬🇧** Sentinel-1 033A: coherence, wrapped interferogram and LOS displacement. **🇪🇸** Sentinel-1 033A: coherencia, interferograma envuelto y desplazamiento LOS. | **🇬🇧** LOS displacement zooms: airport/port and Macuto–Naiguatá. **🇪🇸** Acercamientos del LOS: aeropuerto/puerto y Macuto–Naiguatá. |
-| <img src="docs/img/prelim_s1_correlacion_dem.jpg" width="420" alt="LOS vs DEM correlation / Correlación LOS vs DEM"> | <img src="docs/img/prelim_s1_viaducto.jpg" width="420" alt="Viaduct No. 1 profile / Perfil viaducto N° 1"> |
-| **🇬🇧** LOS vs. elevation check for stratified tropospheric delay. **🇪🇸** Control LOS vs. elevación para el retraso troposférico estratificado. | **🇬🇧** Exploratory profile across Viaduct No. 1 (80 m pixels: only a few pixels span the structure; to be revisited at 40 m and with Umbra). **🇪🇸** Perfil exploratorio del Viaducto N° 1 (píxel de 80 m: pocos píxeles cubren la estructura; se revisará a 40 m y con Umbra). |
+| <img src="docs/img/cobertura_nisar_umbra_es.jpg" width="420" alt="Cobertura NISAR y Umbra"> | <img src="docs/img/cobertura_nisar_umbra_en.jpg" width="420" alt="NISAR and Umbra coverage"> |
+| Huellas GUNW de NISAR (co, pre y postsísmicas) y escenas Umbra. | NISAR GUNW footprints (co-, pre-, post-seismic) and Umbra collects. |
+| <img src="docs/img/sitio_playa_grande_es.jpg" width="420" alt="Playa Grande: Planet y Umbra"> | <img src="docs/img/sitio_playa_grande_en.jpg" width="420" alt="Playa Grande: Planet and Umbra"> |
+| Playa Grande (Urimare): Planet antes/después, amplitud y textura Umbra, NDLI y acercamiento de 300 m. | Playa Grande (Urimare): Planet before/after, Umbra amplitude and texture, NDLI and 300 m zoom. |
+| <img src="docs/img/sitio_catia_la_mar_es.jpg" width="420" alt="Catia La Mar"> | <img src="docs/img/sitio_catia_la_mar_en.jpg" width="420" alt="Catia La Mar"> |
+| Catia La Mar (mosaico de escenas Umbra para cubrir el sitio completo). | Catia La Mar (Umbra scene mosaic to cover the full site). |
+
+| Sentinel-1 033A (80 m) · 🇪🇸 primera aproximación / 🇬🇧 first pass | |
+|---|---|
+| <img src="docs/img/prelim_s1_coherencia_fase_los.jpg" width="420" alt="Sentinel-1 coherence, wrapped phase, LOS"> | <img src="docs/img/prelim_s1_zooms_guaira.jpg" width="420" alt="Sentinel-1 LOS zooms"> |
+| 🇪🇸 Coherencia, interferograma envuelto y LOS. 🇬🇧 Coherence, wrapped interferogram and LOS. | 🇪🇸 Acercamientos del LOS. 🇬🇧 LOS zooms. |
+| <img src="docs/img/prelim_s1_correlacion_dem.jpg" width="420" alt="LOS vs DEM"> | <img src="docs/img/prelim_s1_viaducto.jpg" width="420" alt="Viaduct profile"> |
+| 🇪🇸 LOS vs. elevación (control troposférico). 🇬🇧 LOS vs. elevation (tropospheric check). | 🇪🇸 Perfil exploratorio del Viaducto N° 1 (80 m; se rehará a 40 m y con Umbra). 🇬🇧 Exploratory Viaduct No. 1 profile (80 m; to be redone at 40 m and with Umbra). |
 
 ## 6 · How to run / Cómo ejecutar
 
@@ -112,9 +125,10 @@ SAR_multifrequency/
 │   └── 04_Danio_X_Optico.ipynb
 ├── src/                       # all the logic / toda la lógica
 │   ├── umbra_inventario.py · nisar_filtrar.py · s1_pares_hyp3.py · inventario_multisensor.py   (01)
-│   ├── descargas.py                                                                            (02)
+│   ├── descargas.py · hyp3_estado.py                                                           (02)
 │   ├── alos2_buscar.py · auxiliares.py · nisar_gunw_a_geotiff.py · s1_hyp3_a_geotiff.py · descomposicion_C_L.py   (03)
-│   └── umbra_planet_sitios.py · exportar_figuras_github.py                                    (04)
+│   ├── umbra_planet_sitios.py · exportar_figuras_github.py                                    (04)
+│   └── comun.py   # ES/EN outputs + logs / salidas ES/EN + registros
 ├── docs/
 │   ├── img/                   # README figures and animations / figuras y animaciones
 │   ├── make_animations.py     # reproducible GIF generator / generador reproducible de GIF
@@ -127,7 +141,13 @@ SAR_multifrequency/
 |---|---|
 | Heavy data (`.h5`, `.tif`, `.zip`, `.nitf`) are **never** committed; they live in Google Drive during processing, and derived products will be archived on Zenodo. | Los datos pesados (`.h5`, `.tif`, `.zip`, `.nitf`) **nunca** se suben al repositorio; viven en Google Drive durante el procesamiento y los productos derivados se archivarán en Zenodo. |
 
-## 8 · Conventions / Convenciones
+## 8 · Outputs and logs / Salidas y registros
+
+| 🇬🇧 | 🇪🇸 |
+|---|---|
+| **Every figure** is saved twice: `<name>_es.png` (Spanish) and `<name>_en.png` (English); timeline and decomposition also as vector PDF. **Every table**: `<name>.csv` (Spanish, used by the pipeline) and `<name>_en.csv` (English headers and values). **Every notebook cell** writes its printed output and any error to `05_documentacion/logs/<date>_<notebook>_<script>.log`, and each session logs the code version (commit) to `05_documentacion/versiones_codigo.csv`. | **Cada figura** se guarda dos veces: `<nombre>_es.png` (español) y `<nombre>_en.png` (inglés); la línea de tiempo y la descomposición también en PDF vectorial. **Cada tabla**: `<nombre>.csv` (español, la usa el flujo) y `<nombre>_en.csv` (encabezados y valores en inglés). **Cada celda** guarda lo que imprime y cualquier error en `05_documentacion/logs/<fecha>_<notebook>_<script>.log`, y cada sesión registra la versión del código (commit) en `05_documentacion/versiones_codigo.csv`. |
+
+## 9 · Conventions / Convenciones
 
 | Item / Elemento | 🇬🇧 | 🇪🇸 |
 |---|---|---|
@@ -138,7 +158,7 @@ SAR_multifrequency/
 | Time / Hora | UTC (local = UTC − 4 h) | UTC (local = UTC − 4 h) |
 | Look side / Lado de mirada | NISAR looks **left**, Sentinel-1 **right** | NISAR mira a la **izquierda**, Sentinel-1 a la **derecha** |
 
-## 9 · Status / Estado
+## 10 · Status / Estado
 
 | | 🇬🇧 | 🇪🇸 |
 |---|---|---|
@@ -152,7 +172,7 @@ SAR_multifrequency/
 | ⏳ | Umbra × Planet v2 (full coverage, NDLI, zoom) | Umbra × Planet v2 (cobertura completa, NDLI, acercamiento) |
 | ⏳ | Manuscript, Zenodo, submission (deadline 21 Dec 2026) | Manuscrito, Zenodo, envío (fecha límite 21 dic 2026) |
 
-## 10 · Attribution / Atribución
+## 11 · Attribution / Atribución
 
 - Contains modified Copernicus Sentinel data (2026), processed by ESA and ASF HyP3. / Contiene datos Copernicus Sentinel modificados (2026), procesados por ESA y ASF HyP3.
 - NISAR data courtesy of NASA/JPL-Caltech and ISRO, distributed by ASF DAAC. / Datos NISAR cortesía de NASA/JPL-Caltech e ISRO, distribuidos por ASF DAAC.
@@ -160,7 +180,7 @@ SAR_multifrequency/
 - Contains Umbra open data, licensed under CC BY 4.0. / Contiene datos abiertos de Umbra, licencia CC BY 4.0.
 - Imagery © Planet Labs PBC, Planet Crisis Response Program, CC BY-NC 4.0. / Imágenes © Planet Labs PBC, programa Crisis Response, CC BY-NC 4.0.
 
-## 11 · Citation and licence / Cita y licencia
+## 12 · Citation and licence / Cita y licencia
 
 | 🇬🇧 | 🇪🇸 |
 |---|---|

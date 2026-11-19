@@ -22,6 +22,9 @@ Umbra (X-band) × Planet (optical) at DAMAGE SITES · v2
 Variables que se pueden fijar ANTES de ejecutar (con %run -i) / Variables you can set BEFORE running (with %run -i):
   LADO_M (1000), RES_M (0.5), ZOOM_M (300), SITIOS_A_PROCESAR (None = todos / all)
 """
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
+from comun import T, csv_bilingue, guardar_bilingue
 import gc
 import glob
 import json
@@ -301,11 +304,12 @@ for nombre, (lat, lon) in SITIOS.items():
     paneles = []
     try:
         paneles.append((rgb(leer(PLANET_PRE, cx, cy, [1, 2, 3], LADO_M)), None, None,
-                        "(a) Planet antes / before · Q1-2026 · 4.8 m"))
+                        lambda i: T("pl_antes", i)))
         if len(pl):
             t = pl.fecha.iloc[0].tz_convert(HORA_LOCAL)
+            g_ = pl["gsd"].iloc[0]
             paneles.append((rgb(leer(pl.url.iloc[0], cx, cy, [1, 2, 3], LADO_M)), None, None,
-                            f"(b) Planet después / after · {t:%d %b %H:%M} · {pl['gsd'].iloc[0]:.2f} m"))
+                            lambda i, t=t, g_=g_: T("pl_despues", i, t=f"{t:%d %b %H:%M}", g=f"{g_:.2f}")))
         usadas_txt = ""
         if tiene_umbra:
             cand["cob"] = cand.geometry.intersection(chip).area / chip.area
@@ -317,57 +321,57 @@ for nombre, (lat, lon) in SITIOS.items():
             t1 = us1.inicio_utc.iloc[0].tz_convert(HORA_LOCAL)
             usadas_txt = f"{m1}: " + ",".join(t[:8] for t in us1.task_id)
             paneles.append((estirar(db(a1f)), "gray", None,
-                            f"(c) Umbra X amplitud / amplitude (dB, Lee) · {t1:%d %b %H:%M} · {m1}"))
-            paneles.append((estirar(cv_local(a1f), (5, 95)), "magma", None,
-                            "(d) Umbra textura / texture · CV 9×9"))
+                            lambda i, t1=t1, m1=m1: T("um_amp", i, t=f"{t1:%d %b %H:%M}", m=T(m1, i))))
+            paneles.append((estirar(cv_local(a1f), (5, 95)), "magma", None, lambda i: T("um_tex", i)))
             if len(miradas) > 1:
                 m2 = miradas[1]
                 a2, us2 = mosaico_mirada(cand[cand.direccion_mirada == m2].sort_values("cob", ascending=False),
                                          cx, cy, LADO_M)
                 a2f = lee(a2)
                 izq, der = (a1f, a2f) if m1 == "left" else (a2f, a1f)
-                paneles.append((ndli(izq, der), "RdBu_r", (-0.6, 0.6),
-                                "(e) NDLI = (izq − der)/(izq + der) / (left − right)/(left + right)"))
+                paneles.append((ndli(izq, der), "RdBu_r", (-0.6, 0.6), lambda i: T("um_ndli", i)))
                 usadas_txt += f" · {m2}: " + ",".join(t[:8] for t in us2.task_id)
                 del a2, a2f
             del a1, a1f
         elif coh_nisar:
             c = leer(coh_nisar[0], cx, cy, [1], LADO_M, res=10)[0]
-            paneles.append((c, "gray", (0, 1), f"(c) Coherencia NISAR / coherence · {os.path.basename(coh_nisar[0])[:24]}"))
+            f_ = os.path.basename(coh_nisar[0])[:24]
+            paneles.append((c, "gray", (0, 1), lambda i, f_=f_: T("coh_nisar", i, f=f_)))
     except Exception as e:
         print(f"[!] {nombre}: {e}")
         continue
 
     # Figura: fila 1 = recorte completo, fila 2 = acercamiento / row 1 = full chip, row 2 = zoom
-    n = len(paneles)
-    fig, axs = plt.subplots(2, n, figsize=(4.0 * n, 8.4), squeeze=False)
-    frac = ZOOM_M / LADO_M
-    for j, (img, cmap, lim, tit) in enumerate(paneles):
-        res_img = LADO_M / img.shape[1]
-        kw = dict(cmap=cmap, interpolation="nearest")
-        if lim:
-            kw.update(vmin=lim[0], vmax=lim[1])
-        im = axs[0, j].imshow(img, **kw)
-        axs[0, j].set_title(tit, loc="left", fontsize=8)
-        k = img.shape[0] * frac / 2; c0 = img.shape[0] / 2
-        axs[0, j].add_patch(Rectangle((c0 - k, c0 - k), 2 * k, 2 * k, fill=False, ec="yellow", lw=1.2))
-        barra(axs[0, j], img.shape[1], res_img, 200)
-        axs[1, j].imshow(recorte(img, frac), **kw)
-        barra(axs[1, j], recorte(img, frac).shape[1], res_img, 50)
-        if cmap == "RdBu_r" or (lim and cmap == "gray"):
-            fig.colorbar(im, ax=axs[:, j], fraction=0.03, pad=0.01)
-        for ax in axs[:, j]:
-            ax.set_xticks([]); ax.set_yticks([])
-    axs[1, 0].set_ylabel(f"Acercamiento / zoom {ZOOM_M} m", fontsize=9)
-    nota = f" · recorte desplazado / chip shifted {desp:.0f} m" if desp > 0 else ""
-    fig.suptitle(f"{nombre.replace('_', ' ')} ({lat:.4f}° N, {lon:.4f}° W) · {LADO_M} m · "
-                 f"cobertura Umbra / coverage {cob:.0%}{nota}", x=0.01, ha="left", fontsize=10.5, weight="bold")
-    fig.text(0.01, 0.005, "Contains Umbra open data, CC BY 4.0 · Imagery © Planet Labs PBC, CC BY-NC 4.0"
-             + (f" · Umbra: {usadas_txt}" if usadas_txt else ""), fontsize=6.5, color="0.35")
-    ruta = f"{SALIDA}/{nombre}_v2.png"
-    plt.savefig(ruta, dpi=200, bbox_inches="tight")
-    plt.show()
-    plt.close("all")
+    def _fig(idioma):
+        n = len(paneles)
+        fig, axs = plt.subplots(2, n, figsize=(4.0 * n, 8.4), squeeze=False)
+        frac = ZOOM_M / LADO_M
+        for j, (img, cmap, lim, tit) in enumerate(paneles):
+            res_img = LADO_M / img.shape[1]
+            kw = dict(cmap=cmap, interpolation="nearest")
+            if lim:
+                kw.update(vmin=lim[0], vmax=lim[1])
+            im = axs[0, j].imshow(img, **kw)
+            axs[0, j].set_title(tit(idioma), loc="left", fontsize=8)
+            k = img.shape[0] * frac / 2; c0 = img.shape[0] / 2
+            axs[0, j].add_patch(Rectangle((c0 - k, c0 - k), 2 * k, 2 * k, fill=False, ec="yellow", lw=1.2))
+            barra(axs[0, j], img.shape[1], res_img, 200)
+            axs[1, j].imshow(recorte(img, frac), **kw)
+            barra(axs[1, j], recorte(img, frac).shape[1], res_img, 50)
+            if cmap == "RdBu_r" or (lim and cmap == "gray"):
+                fig.colorbar(im, ax=axs[:, j], fraction=0.03, pad=0.01)
+            for ax in axs[:, j]:
+                ax.set_xticks([]); ax.set_yticks([])
+        axs[1, 0].set_ylabel(T("zoom", idioma, z=ZOOM_M), fontsize=9)
+        nota = T("desplazado", idioma, m=desp) if desp > 0 else ""
+        fig.suptitle(T("sitio_tit", idioma, s=nombre.replace("_", " "), lat=lat, lon=lon, L=LADO_M, c=cob, d=nota),
+                     x=0.01, ha="left", fontsize=10.5, weight="bold")
+        fig.text(0.01, 0.005, "Contains Umbra open data, CC BY 4.0 · Imagery © Planet Labs PBC, CC BY-NC 4.0"
+                 + (f" · Umbra: {usadas_txt}" if usadas_txt else ""), fontsize=6.5, color="0.35")
+        return fig
+
+    rutas = guardar_bilingue(_fig, f"{SALIDA}/{nombre}_v2", dpi=200)
+    ruta = rutas[0]
     resumen.append(dict(sitio=nombre, umbra=tiene_umbra, cobertura=round(cob, 3),
                         desplazamiento_m=round(desp), escenas_umbra=usadas_txt,
                         planet=pl["id"].iloc[0] if len(pl) else None, figura=ruta))
@@ -375,5 +379,5 @@ for nombre, (lat, lon) in SITIOS.items():
     gc.collect()
     print(f"✓ {nombre}: cobertura {cob:.0%}" + (f", desplazado {desp:.0f} m" if desp else ""))
 
-pd.DataFrame(resumen).to_csv(f"{SALIDA}/resumen_sitios_v2.csv", index=False)
+csv_bilingue(pd.DataFrame(resumen), f"{SALIDA}/resumen_sitios_v2.csv")
 print(f"\nListo / Done → {SALIDA}/resumen_sitios_v2.csv")

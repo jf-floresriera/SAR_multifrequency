@@ -56,8 +56,8 @@ LUGARES = {"Yumare": (-68.69, 10.62), "Puerto Cabello": (-68.01, 10.47), "Ocumar
 # --------------------------------------------------------------------------
 # 1. Línea de tiempo animada
 # --------------------------------------------------------------------------
-def anim_linea_tiempo():
-    filas = ["Umbra (X)", "Sentinel-1 (C)", "NISAR (L)", "Planet (óptico)"]
+def anim_linea_tiempo(idioma="es"):
+    filas = ["Umbra (X)", "Sentinel-1 (C)", "NISAR (L)", "Planet (óptico)" if idioma == "es" else "Planet (optical)"]
     y = {f: i for i, f in enumerate(filas[::-1])}
     t0, t1 = datetime(2026, 6, 11), datetime(2026, 7, 6)
     pasos = [t0 + timedelta(hours=12 * i) for i in range(int((t1 - t0).total_seconds() / 43200) + 1)]
@@ -89,22 +89,23 @@ def anim_linea_tiempo():
         u = [t for t, *_ in UMBRA if t <= ahora]
         ax.plot(u, [y["Umbra (X)"]] * len(u), "o", color=COL["X"], ms=7, mec="white")
         p = [t for t in PLANET if t <= ahora]
-        ax.plot(p, [y["Planet (óptico)"]] * len(p), "s", color=COL["OPT"], ms=6, mec="white")
-        ax.set_title(f"Adquisiciones disponibles · {ahora:%d %b %Y}   "
-                     f"(Umbra {len(u)}/26 · Planet {len(p)} · pares InSAR "
-                     f"{sum(a <= ahora for _, a, _ in S1_PARES + NISAR_PARES)}/5)",
-                     loc="left", fontsize=10)
+        ax.plot(p, [y[filas[3]]] * len(p), "s", color=COL["OPT"], ms=6, mec="white")
+        n_ins = sum(a <= ahora for _, a, _ in S1_PARES + NISAR_PARES)
+        tit = (f"Adquisiciones disponibles · {ahora:%d %b %Y}   (Umbra {len(u)}/26 · Planet {len(p)} · pares InSAR {n_ins}/5)"
+               if idioma == "es" else
+               f"Available acquisitions · {ahora:%d %b %Y}   (Umbra {len(u)}/26 · Planet {len(p)} · InSAR pairs {n_ins}/5)")
+        ax.set_title(tit, loc="left", fontsize=10)
         fig.tight_layout()
 
     an = FuncAnimation(fig, dibujar, frames=len(pasos), interval=180)
-    an.save(f"{OUT}/linea_tiempo_sensores.gif", writer=PillowWriter(fps=6))
+    an.save(f"{OUT}/linea_tiempo_sensores_{idioma}.gif", writer=PillowWriter(fps=6))
     plt.close(fig)
 
 
 # --------------------------------------------------------------------------
 # 2. Mapa animado de adquisiciones Umbra por día
 # --------------------------------------------------------------------------
-def anim_mapa_umbra():
+def anim_mapa_umbra(idioma="es"):
     dias = sorted({t.date() for t, *_ in UMBRA})
     fig, ax = plt.subplots(figsize=(9, 4.2), dpi=100)
 
@@ -114,7 +115,7 @@ def anim_mapa_umbra():
         ax.set_aspect("equal")
         ax.set_facecolor("#F4F7FA")
         ax.add_patch(Rectangle((-67.3, 10.4), 0.6, 0.4, fill=False, ec="#999", ls=":", lw=1))
-        ax.text(-67.29, 10.785, "ROI La Guaira", fontsize=7, color="#777")
+        ax.text(-67.29, 10.785, "Zona de estudio La Guaira" if idioma == "es" else "La Guaira study area", fontsize=7, color="#777")
         desp = {"Catia La Mar": (-0.16, 0.05), "La Guaira": (0.0, 0.05), "Guarenas": (-0.09, -0.06),
                 "Guatire": (0.01, 0.04), "Caracas": (0.01, -0.05)}
         for n, (lo, la) in LUGARES.items():
@@ -128,22 +129,27 @@ def anim_mapa_umbra():
                                        fc=COL["X"] if m == "L" else "#8172B3",
                                        alpha=0.85 if actual else 0.35, ec="white", lw=0.6))
         n = sum(t.date() <= dias[k] for t, *_ in UMBRA)
-        ax.set_title(f"Umbra banda X · {dias[k]:%d %b %Y} · {n}/26 escenas  "
-                     "(azul = mirada izq., morado = mirada der.)", loc="left", fontsize=10)
-        ax.set_xlabel("Longitud (°)"); ax.set_ylabel("Latitud (°)")
+        if idioma == "es":
+            ax.set_title(f"Umbra banda X · {dias[k]:%d %b %Y} · {n}/26 escenas  (azul = mirada izq., morado = mirada der.)",
+                         loc="left", fontsize=10)
+            ax.set_xlabel("Longitud (°)"); ax.set_ylabel("Latitud (°)")
+        else:
+            ax.set_title(f"Umbra X-band · {dias[k]:%d %b %Y} · {n}/26 scenes  (blue = left look, purple = right look)",
+                         loc="left", fontsize=10)
+            ax.set_xlabel("Longitude (°)"); ax.set_ylabel("Latitude (°)")
         ax.text(-66.36, 10.16, "Contains Umbra open data, CC BY 4.0", ha="right", fontsize=6.5, color="0.4")
         fig.tight_layout()
 
     an = FuncAnimation(fig, dibujar, frames=len(dias), interval=900)
-    an.save(f"{OUT}/mapa_umbra_por_dia.gif", writer=PillowWriter(fps=1.2))
+    an.save(f"{OUT}/mapa_umbra_por_dia_{idioma}.gif", writer=PillowWriter(fps=1.2))
     plt.close(fig)
 
 
 # --------------------------------------------------------------------------
 # 3. Diagrama animado del flujo de trabajo
 # --------------------------------------------------------------------------
-def anim_flujo():
-    cajas = [
+def anim_flujo(idioma="es"):
+    cajas_es = [
         ("Datos abiertos", "Sentinel-1 · NISAR · ALOS-2\nUmbra · Planet · GNSS", 0.5, 0.88, "#E8EEF7"),
         ("1 · Inventario", "filtro cosísmico · huellas\nlicencias · fechas de acceso", 0.5, 0.72, "#E8EEF7"),
         ("2a · InSAR C y L", "fase → LOS (m) · coherencia\nionosfera · grilla común 80 m", 0.25, 0.54, "#E9F4EC"),
@@ -152,6 +158,16 @@ def anim_flujo():
         ("4 · Integración", "daño vs gradiente de deformación\ndistancia a la falla", 0.5, 0.20, "#FBEFE5"),
         ("5 · Publicación", "SRL Focus Section 2026\nGitHub + Zenodo (DOI)", 0.5, 0.05, "#FCE9EA"),
     ]
+    cajas_en = [
+        ("Open data", "Sentinel-1 · NISAR · ALOS-2\nUmbra · Planet · GNSS", 0.5, 0.88, "#E8EEF7"),
+        ("1 · Inventory", "coseismic filter · footprints\nlicences · access dates", 0.5, 0.72, "#E8EEF7"),
+        ("2a · C- and L-band InSAR", "phase → LOS (m) · coherence\nionosphere · common 80 m grid", 0.25, 0.54, "#E9F4EC"),
+        ("2b · Damage X + optical", "Umbra GEC × Planet\nbefore / after", 0.75, 0.54, "#F1ECF6"),
+        ("3 · East / Up", "asc + desc · C vs L band\nGNSS validation CCS1", 0.25, 0.36, "#E9F4EC"),
+        ("4 · Integration", "damage vs deformation gradient\ndistance to the fault", 0.5, 0.20, "#FBEFE5"),
+        ("5 · Publication", "SRL Focus Section 2026\nGitHub + Zenodo (DOI)", 0.5, 0.05, "#FCE9EA"),
+    ]
+    cajas = cajas_es if idioma == "es" else cajas_en
     flechas = [(0, 1), (1, 2), (1, 3), (2, 4), (4, 5), (3, 5), (5, 6)]
     orden = [0, 1, 2, 3, 4, 5, 6]
     fig, ax = plt.subplots(figsize=(8, 7), dpi=100)
@@ -171,17 +187,18 @@ def anim_flujo():
             ax.text(x, yy + 0.018, t, ha="center", va="center", fontsize=10.5, weight="bold",
                     color="0.1" if on else "0.75")
             ax.text(x, yy - 0.022, sub, ha="center", va="center", fontsize=8, color="0.3" if on else "0.8")
-        ax.set_title("GUAIRA-SAR · flujo de trabajo reproducible", fontsize=12, weight="bold", loc="left")
+        ax.set_title("GUAIRA-SAR · flujo de trabajo reproducible" if idioma == "es" else "GUAIRA-SAR · reproducible workflow", fontsize=12, weight="bold", loc="left")
         fig.tight_layout()
 
     an = FuncAnimation(fig, dibujar, frames=len(orden) + 3, interval=800)
-    an.save(f"{OUT}/flujo_trabajo.gif", writer=PillowWriter(fps=1.25))
+    an.save(f"{OUT}/flujo_trabajo_{idioma}.gif", writer=PillowWriter(fps=1.25))
     plt.close(fig)
 
 
 if __name__ == "__main__":
-    anim_linea_tiempo()
-    anim_mapa_umbra()
-    anim_flujo()
+    for idioma in ("es", "en"):
+        anim_linea_tiempo(idioma)
+        anim_mapa_umbra(idioma)
+        anim_flujo(idioma)
     for f in sorted(os.listdir(OUT)):
         print(f, round(os.path.getsize(f"{OUT}/{f}") / 1e6, 2), "MB")

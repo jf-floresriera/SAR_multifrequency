@@ -1,5 +1,8 @@
 # -*- coding: utf-8 -*-
 """ALOS-2 ScanSAR en ASF sobre la zona de ruptura / ALOS-2 ScanSAR on ASF over the rupture zone."""
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
+from comun import T, csv_bilingue, guardar_bilingue
 import os
 RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR")
 os.makedirs(f"{RAIZ}/05_documentacion", exist_ok=True)
@@ -30,4 +33,4 @@ else:
     alos2["relacion"] = alos2.fecha.map(lambda f: "PRE" if f < SISMO else "POST")
     alos2 = alos2.sort_values(["path", "fecha"])
     print(alos2.drop(columns="url").to_string(index=False))
-    alos2.to_csv(f"{RAIZ}/05_documentacion/alos2_escenas.csv", index=False)
+    csv_bilingue(alos2, f"{RAIZ}/05_documentacion/alos2_escenas.csv")

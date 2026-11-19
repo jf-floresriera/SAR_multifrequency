@@ -18,6 +18,9 @@ Uso en Colab (con `session` de asf ya autenticada, como en el notebook):
   !pip install -q asf_search duckdb pandas matplotlib
   %run inventario_multisensor.py
 """
+import sys as _sys, os as _os
+_sys.path.insert(0, _os.path.dirname(_os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
+from comun import T, csv_bilingue, guardar_bilingue
 import os
 
 import matplotlib.dates as mdates
@@ -174,12 +177,12 @@ for c in ["fecha", "fecha_sec"]:
     inv[c] = pd.to_datetime(inv[c], utc=True, errors="coerce")
 inv["dias_desde_sismo"] = ((inv.fecha - SISMO).dt.total_seconds() / 86400).round(2)
 inv = inv.sort_values(["banda", "sensor", "fecha"]).reset_index(drop=True)
-inv.to_csv(f"{SALIDA}/inventario_multisensor.csv", index=False)
+csv_bilingue(inv, f"{SALIDA}/inventario_multisensor.csv")
 
-resumen = (inv.assign(familia=inv.sensor.str.split(" ").str[0])
+resumen = (inv.assign(familia=inv.sensor.str.replace(r"^Sentinel-1\w?", "Sentinel-1", regex=True).str.split(" ").str[0])
            .pivot_table(index=["familia", "banda"], columns="relacion_sismo",
                         values="id", aggfunc="count", fill_value=0))
-resumen.to_csv(f"{SALIDA}/resumen_sensores.csv")
+csv_bilingue(resumen, f"{SALIDA}/resumen_sensores.csv", index=True)
 print("\n=== RESUMEN ===")
 print(resumen.to_string())
 
@@ -195,32 +198,37 @@ familias = [f for f in orden if f in set(inv.familia)]
 ypos = {f: i for i, f in enumerate(familias)}
 
 plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": 10})
-fig, ax = plt.subplots(figsize=(10, 0.7 * len(familias) + 1.6))
 ventana = inv[(inv.fecha > SISMO - pd.Timedelta(days=30)) & (inv.fecha < SISMO + pd.Timedelta(days=30))]
-for _, r in ventana.iterrows():
-    y = ypos[r.familia]
-    c = color.get(r.banda, "k")
-    if pd.notna(r.fecha_sec):   # par interferométrico -> segmento
-        ax.plot([r.fecha, r.fecha_sec], [y + 0.18, y + 0.18], color=c, lw=2.2, alpha=0.8,
-                solid_capstyle="round")
-    else:
-        ax.plot(r.fecha, y, "o", ms=6, mfc=c, mec="white", mew=0.6, alpha=0.9)
-ax.axvline(SISMO, color="#C44E52", lw=1.5, ls="--")
-ax.text(SISMO, len(familias) - 0.4, "  Mw 7.2 + 7.5\n  24 jun 2026", color="#C44E52",
-        va="top", fontsize=9)
-ax.set_yticks(range(len(familias)))
-ax.set_yticklabels([f"{f}  ({ventana[ventana.familia == f].banda.iloc[0] if (ventana.familia == f).any() else ''})"
-                    for f in familias])
-ax.set_ylim(-0.6, len(familias) - 0.3)
-ax.xaxis.set_major_locator(mdates.DayLocator(interval=5))
-ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b"))
-ax.grid(axis="x", color="0.9")
-for s in ["top", "right", "left"]:
-    ax.spines[s].set_visible(False)
-ax.set_title("Adquisiciones disponibles por sensor (±30 días del sismo)\n"
-             "Puntos: escenas · Segmentos: pares interferométricos", fontsize=11, loc="left")
-plt.tight_layout()
-plt.savefig(f"{SALIDA}/fig_linea_tiempo_sensores.png", dpi=300)
-plt.savefig(f"{SALIDA}/fig_linea_tiempo_sensores.pdf")
-plt.show()
-print(f"\nTabla y figura guardadas en {SALIDA}/")
+
+
+def _linea(idioma):
+    fig, ax = plt.subplots(figsize=(10, 0.7 * len(familias) + 1.6))
+    for _, r in ventana.iterrows():
+        y = ypos[r.familia]
+        c = color.get(r.banda, "k")
+        if pd.notna(r.fecha_sec):
+            ax.plot([r.fecha, r.fecha_sec], [y + 0.18, y + 0.18], color=c, lw=2.2, alpha=0.8,
+                    solid_capstyle="round")
+        else:
+            ax.plot(r.fecha, y, "o", ms=6, mfc=c, mec="white", mew=0.6, alpha=0.9)
+    ax.axvline(SISMO, color="#C44E52", lw=1.5, ls="--")
+    ax.text(SISMO, len(familias) - 0.4, "  " + T("sismo", idioma).replace("\n", "\n  "), color="#C44E52",
+            va="top", fontsize=9)
+    ax.set_yticks(range(len(familias)))
+    banda_en = {"Óptico": "Optical"}
+    ax.set_yticklabels([f"{f}  ({(banda_en.get(b, b) if idioma == 'en' else b)})" for f, b in
+                        ((f, ventana[ventana.familia == f].banda.iloc[0] if (ventana.familia == f).any() else "")
+                         for f in familias)])
+    ax.set_ylim(-0.6, len(familias) - 0.3)
+    ax.xaxis.set_major_locator(mdates.DayLocator(interval=5))
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%d %b"))
+    ax.grid(axis="x", color="0.9")
+    for sp in ["top", "right", "left"]:
+        ax.spines[sp].set_visible(False)
+    ax.set_title(T("linea_tit", idioma), fontsize=11, loc="left")
+    fig.tight_layout()
+    return fig
+
+
+print(guardar_bilingue(_linea, f"{SALIDA}/fig_linea_tiempo_sensores", formatos=("png", "pdf")))
+print(f"\nTablas y figuras (ES/EN) en / tables and figures (ES/EN) in {SALIDA}/")

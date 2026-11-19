@@ -1,27 +1,29 @@
 # -*- coding: utf-8 -*-
 """
-Umbra (banda X) × Planet (óptico) en los SITIOS DE DAÑO – versión de bajo consumo de memoria
-Umbra (X-band) × Planet (optical) at DAMAGE SITES – low-memory version
+Umbra (banda X) × Planet (óptico) en los SITIOS DE DAÑO · v2
+Umbra (X-band) × Planet (optical) at DAMAGE SITES · v2
 
-🇪🇸 Procesa UN sitio a la vez, guarda la figura en disco y libera la memoria antes del siguiente.
-    Si Colab se queda sin RAM, reduzca LADO_M o procese los sitios por partes con SITIOS_A_PROCESAR.
-🇬🇧 Processes ONE site at a time, writes the figure to disk and frees memory before the next one.
-    If Colab runs out of RAM, reduce LADO_M or process sites in batches with SITIOS_A_PROCESAR.
+🇪🇸 Novedades v2
+  · Elige la escena Umbra que MÁS cubre el sitio y rellena huecos con las demás de la misma mirada (mosaico).
+  · Si la cobertura sigue < 90 %, desplaza el recorte hacia donde hay radar (y lo indica en la figura).
+  · Reemplaza la composición multi-aspecto por el ÍNDICE NORMALIZADO DE DIFERENCIA DE MIRADAS (NDLI):
+        NDLI = (I_izq − I_der) / (I_izq + I_der), cada mirada normalizada por su mediana.
+  · Segunda fila con ACERCAMIENTO (300 m) en el centro del recorte.
+  · Sitios sin Umbra: figura Planet antes/después + coherencia NISAR cosísmica si ya existe (notebook 03).
+  · Bajo consumo de memoria: un sitio a la vez, se libera todo antes del siguiente.
+🇬🇧 What's new in v2
+  · Picks the Umbra scene with the LARGEST coverage of the site and fills gaps with the other scenes of the same look.
+  · If coverage is still < 90 %, shifts the chip towards radar coverage (reported in the figure).
+  · Replaces the multi-aspect RGB by the NORMALISED DIFFERENCE LOOK INDEX (NDLI), each look median-normalised.
+  · Second row with a 300 m ZOOM at the chip centre.
+  · Sites without Umbra: Planet before/after + NISAR coseismic coherence if already produced (notebook 03).
+  · Low memory: one site at a time.
 
-Paneles por sitio / Panels per site:
-  (a) Planet ANTES / before      – mosaico Q1-2026 (~4.8 m)
-  (b) Planet DESPUÉS / after     – SkySat / PlanetScope (0.5–3 m)
-  (c) Umbra amplitud / amplitude – dB con filtro Lee 5×5 (reduce el speckle)
-  (d) Umbra textura / texture    – coeficiente de variación local (CV, ventana 9×9):
-                                    edificios en pie = líneas brillantes y CV alto;
-                                    escombros = dispersión difusa y CV más homogéneo
-  (e) Umbra multi-aspecto / multi-aspect – SOLO si hay dos miradas (izq./der.) sobre el sitio:
-                                    R = mirada 1, G = mirada 2, B = media.
-                                    Colores = dispersores que cambian con la dirección (fachadas en pie).
-
-Requiere / Requires: ./umbra_inventario/{umbra_huellas.geojson, umbra_inventario.csv, umbra_listado_completo.csv}
+Variables que se pueden fijar ANTES de ejecutar (con %run -i) / Variables you can set BEFORE running (with %run -i):
+  LADO_M (1000), RES_M (0.5), ZOOM_M (300), SITIOS_A_PROCESAR (None = todos / all)
 """
 import gc
+import glob
 import json
 import os
 
@@ -33,55 +35,62 @@ import numpy as np
 import pandas as pd
 import rasterio
 import requests
+from matplotlib.patches import Rectangle
+from pyproj import Transformer
 from rasterio.enums import Resampling
 from rasterio.transform import from_origin
 from rasterio.vrt import WarpedVRT
 from scipy.ndimage import uniform_filter
-from shapely.geometry import Point
+from shapely.geometry import Point, box
+from shapely.ops import unary_union
 
 # ---------------------------------------------------------------------------
 # Configuración / Configuration
 # ---------------------------------------------------------------------------
+_g = globals()
+LADO_M = _g.get("LADO_M", 1000)
+RES_M = _g.get("RES_M", 0.5)
+ZOOM_M = _g.get("ZOOM_M", 300)
+SITIOS_A_PROCESAR = _g.get("SITIOS_A_PROCESAR", None)
+COBERTURA_MIN = 0.90
 SALIDA = "./umbra_planet_sitios"
 os.makedirs(SALIDA, exist_ok=True)
 CRS = "EPSG:32619"
-LADO_M = 1000          # lado del recorte (m) / chip side (m)   -> bajar a 600 si falta RAM
-RES_M = 0.5            # resolución común / common resolution (m)
 HORA_LOCAL = "America/Caracas"
 UMBRA_DIR = "./umbra_inventario"
 UMBRA_HTTPS = "https://umbra-open-data-catalog.s3.us-west-2.amazonaws.com/"
 PLANET_BASE = "https://data.source.coop/planet/disasterdata/venezuela-earthquake-2026-06-24"
 PLANET_PRE = f"{PLANET_BASE}/pre-event/quarterly-mosaic/quarterly-mosaic-2026Q1.tif"
 PLANET_POST_PARQUET = f"{PLANET_BASE}/post-event/items.parquet"
+NISAR_DIR = "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR/02_procesados/nisar"
 
-# Sitios de daño (coordenadas aproximadas del centro urbano; ajustar a edificios concretos)
-# Damage sites (approximate town-centre coordinates; refine to specific buildings)
-SITIOS = {
-    "Catia_La_Mar":          (10.6055, -67.0324),
-    "Playa_Grande_Urimare":  (10.6100, -67.0103),
-    "La_Guaira":             (10.6000, -66.9331),
-    "Caraballeda":           (10.6122, -66.8519),
-    "Tanaguarena":           (10.6150, -66.8200),
-    "Naiguata":              (10.6200, -66.7400),
+SITIOS = {   # aprox. centro urbano / approx. town centre (refinar a edificios / refine to buildings)
+    "Catia_La_Mar": (10.6055, -67.0324),
+    "Playa_Grande_Urimare": (10.6100, -67.0103),
+    "La_Guaira": (10.6000, -66.9331),
+    "Caraballeda": (10.6122, -66.8519),
+    "Tanaguarena": (10.6150, -66.8200),
+    "Naiguata": (10.6200, -66.7400),
 }
-EPICENTRO_MW75 = (10.622, -67.194)   # USGS, 17 km W de Catia La Mar
-SITIOS_A_PROCESAR = None             # None = todos; o p. ej. ["Catia_La_Mar"] para ir por partes
 
 os.environ.setdefault("GDAL_DISABLE_READDIR_ON_OPEN", "EMPTY_DIR")
 os.environ.setdefault("CPL_VSIL_CURL_ALLOWED_EXTENSIONS", ".tif,.tiff")
 matplotlib.rcParams.update({"font.family": "DejaVu Sans", "font.size": 9})
+A_UTM = Transformer.from_crs(4326, 32619, always_xy=True)
 
 
 # ---------------------------------------------------------------------------
-# Utilidades / Utilities
+# Utilidades de imagen / Image utilities
 # ---------------------------------------------------------------------------
-def leer(url, cx, cy, bandas, lado=LADO_M, res=RES_M):
+def leer(url, cx, cy, bandas, lado, res=RES_M):
     n = int(lado / res)
     tr = from_origin(cx - lado / 2, cy + lado / 2, res, res)
     with rasterio.open(url) as src, WarpedVRT(src, crs=CRS, transform=tr, width=n, height=n,
                                               resampling=Resampling.bilinear) as vrt:
         b = [i for i in bandas if i <= vrt.count]
-        return np.ma.filled(vrt.read(b, masked=True).astype("float32"), np.nan)
+        a = np.ma.filled(vrt.read(b, masked=True).astype("float32"), np.nan)
+    a[a == 0] = np.nan
+    return a
 
 
 def rgb(arr):
@@ -91,54 +100,109 @@ def rgb(arr):
         v = b[np.isfinite(b) & (b > 0)]
         if v.size:
             lo, hi = np.percentile(v, [2, 98])
-            out[..., i] = np.clip((b - lo) / max(hi - lo, 1e-6), 0, 1)
+            out[..., i] = np.where(np.isfinite(b), np.clip((b - lo) / max(hi - lo, 1e-6), 0, 1), 1)
     return out
 
 
 def lee(amp, w=5):
-    """Filtro de Lee sobre intensidad / Lee filter on intensity."""
     I = np.nan_to_num(amp, nan=0.0) ** 2
-    m = uniform_filter(I, w)
-    m2 = uniform_filter(I * I, w)
+    m = uniform_filter(I, w); m2 = uniform_filter(I * I, w)
     var = np.maximum(m2 - m * m, 0)
-    ruido = np.nanmean(var / np.maximum(m * m, 1e-12))
+    validos = np.isfinite(amp) & (m > 0)
+    ruido = np.nanmedian((var / np.maximum(m * m, 1e-12))[validos]) if validos.any() else 1.0
     k = var / np.maximum(var + m * m * ruido, 1e-12)
-    out = m + k * (I - m)
+    out = np.sqrt(np.maximum(m + k * (I - m), 0))
     out[~np.isfinite(amp)] = np.nan
-    return np.sqrt(np.maximum(out, 0))
+    return out
 
 
-def db(amp):
-    a = amp.copy()
-    a[a <= 0] = np.nan
+def db(a):
+    a = a.copy(); a[a <= 0] = np.nan
     return 20 * np.log10(a)
 
 
-def cv_local(amp, w=9):
-    """Coeficiente de variación local / local coefficient of variation."""
-    a = np.nan_to_num(amp, nan=0.0)
-    m = uniform_filter(a, w)
-    s = np.sqrt(np.maximum(uniform_filter(a * a, w) - m * m, 0))
-    cv = s / np.maximum(m, 1e-6)
-    cv[~np.isfinite(amp)] = np.nan
+def cv_local(a, w=9):
+    x = np.nan_to_num(a, nan=0.0)
+    m = uniform_filter(x, w)
+    s = np.sqrt(np.maximum(uniform_filter(x * x, w) - m * m, 0))
+    cv = s / np.maximum(m, 1e-6); cv[~np.isfinite(a)] = np.nan
     return cv
+
+
+def ndli(a_izq, a_der):
+    """Índice normalizado de diferencia de miradas / normalised difference look index."""
+    i1 = a_izq ** 2 / np.nanmedian(a_izq ** 2)
+    i2 = a_der ** 2 / np.nanmedian(a_der ** 2)
+    return (i1 - i2) / (i1 + i2)
 
 
 def estirar(x, p=(2, 98)):
     v = x[np.isfinite(x)]
     if v.size == 0:
-        return np.zeros_like(x)
+        return np.full_like(x, np.nan)
     lo, hi = np.percentile(v, p)
     return np.clip((x - lo) / max(hi - lo, 1e-6), 0, 1)
 
 
-def barra(ax, n, metros=200):
-    L = metros / RES_M
+def barra(ax, n, res, metros):
+    L = metros / res
     x0, y0 = n * 0.05, n * 0.93
     ax.plot([x0, x0 + L], [y0, y0], color="white", lw=4, solid_capstyle="butt")
     ax.plot([x0, x0 + L], [y0, y0], color="black", lw=1.5, solid_capstyle="butt")
     ax.text(x0 + L / 2, y0 - n * 0.03, f"{metros} m", color="white", ha="center", fontsize=7.5,
             weight="bold", path_effects=[pe.withStroke(linewidth=2, foreground="black")])
+
+
+def recorte(a, frac):
+    """Centro de la imagen con fracción `frac` del lado / central crop."""
+    n = a.shape[0]; k = int(n * frac / 2); c = n // 2
+    return a[c - k:c + k, c - k:c + k]
+
+
+# ---------------------------------------------------------------------------
+# Geometría: mejor cobertura y desplazamiento / Geometry: best coverage and shift
+# ---------------------------------------------------------------------------
+def centro_optimo(cx, cy, huellas_utm, lado, cobertura_min=COBERTURA_MIN):
+    """Devuelve (cx, cy, cobertura, desplazamiento_m). Mueve el recorte hacia la zona con radar
+    dentro de un radio de 1.5×lado si la cobertura es insuficiente."""
+    union = unary_union(list(huellas_utm))
+    chip = box(cx - lado / 2, cy - lado / 2, cx + lado / 2, cy + lado / 2)
+    cob = union.intersection(chip).area / chip.area
+    if cob >= cobertura_min:
+        return cx, cy, cob, 0.0
+    zona = union.intersection(Point(cx, cy).buffer(1.5 * lado))
+    if zona.is_empty:
+        return cx, cy, cob, 0.0
+    nx, ny = zona.centroid.x, zona.centroid.y
+    # acercar al sitio original lo más posible manteniendo cobertura / stay as close as possible
+    mejor = (cx, cy, cob)
+    for f in np.linspace(0, 1, 21):
+        tx, ty = cx + f * (nx - cx), cy + f * (ny - cy)
+        c = union.intersection(box(tx - lado / 2, ty - lado / 2, tx + lado / 2, ty + lado / 2)).area / chip.area
+        if c > mejor[2] + 1e-6:
+            mejor = (tx, ty, c)
+        if c >= cobertura_min:
+            break
+    tx, ty, c = mejor
+    return tx, ty, c, float(np.hypot(tx - cx, ty - cy))
+
+
+def mosaico_mirada(escenas, cx, cy, lado):
+    """Lee las escenas de UNA mirada ordenadas por cobertura y rellena huecos / fill gaps."""
+    a, usadas = None, []
+    for _, e in escenas.iterrows():
+        x = leer(e.url, cx, cy, [1], lado)[0]
+        if a is None:
+            a = x
+        else:
+            hueco = ~np.isfinite(a) & np.isfinite(x)
+            if not hueco.any():
+                continue
+            a[hueco] = x[hueco]
+        usadas.append(e)
+        if np.isfinite(a).mean() > 0.995:
+            break
+    return a, pd.DataFrame(usadas)
 
 
 # ---------------------------------------------------------------------------
@@ -152,6 +216,8 @@ umbra = umbra[["task_id", "geometry"]].merge(
     inv[["task_id", "inicio_utc", "satelite", "incidencia_deg", "direccion_mirada"]], on="task_id")
 umbra["url"] = umbra.task_id.map(lambda t: UMBRA_HTTPS + gec[gec.key.str.contains(t)].key.iloc[0]
                                  if gec.key.str.contains(t).any() else None)
+umbra = umbra[umbra.url.notna()]
+umbra_utm = umbra.to_crs(CRS)
 
 pq = f"{SALIDA}/planet_post_items.parquet"
 if not os.path.exists(pq):
@@ -198,95 +264,116 @@ def absoluta(fila, rel):
     return None
 
 
-planet["url"] = [absoluta(f, href(a)) for f, a in zip(planet.to_dict("records"), planet["assets"])]
+cache_urls = f"{SALIDA}/planet_urls.csv"
+if os.path.exists(cache_urls):
+    planet = planet.merge(pd.read_csv(cache_urls), on="id", how="left")
+else:
+    planet["url"] = [absoluta(f, href(a)) for f, a in zip(planet.to_dict("records"), planet["assets"])]
+    planet[["id", "url"]].to_csv(cache_urls, index=False)
 planet["fecha"] = pd.to_datetime(planet["datetime"], utc=True)
-print(f"Planet: {planet.url.notna().sum()}/{len(planet)} URLs válidas / valid URLs")
-if planet.url.notna().any():
-    print("  ej.:", planet.url.dropna().iloc[0])
+planet = planet[planet.url.notna()]
+planet_utm = planet.to_crs(CRS)
+print(f"Umbra: {len(umbra)} escenas · Planet: {len(planet)} escenas con URL")
+
+coh_nisar = sorted(glob.glob(f"{NISAR_DIR}/*T126D*_coh.tif")) or sorted(glob.glob(f"{NISAR_DIR}/*_coh.tif"))
+
 
 # ---------------------------------------------------------------------------
-# 2. Cobertura por sitio / Coverage per site
+# 2. Un sitio a la vez / One site at a time
 # ---------------------------------------------------------------------------
-filas = []
-for nombre, (lat, lon) in SITIOS.items():
-    p = Point(lon, lat)
-    u = umbra[umbra.contains(p)].sort_values("inicio_utc")
-    pl = planet[planet.contains(p) & planet.url.notna()].sort_values("gsd" if "gsd" in planet else "fecha")
-    filas.append(dict(sitio=nombre, lat=lat, lon=lon, n_umbra=len(u),
-                      miradas=",".join(sorted(set(u.direccion_mirada.dropna()))),
-                      n_planet_post=len(pl), umbra_tasks=",".join(t[:8] for t in u.task_id),
-                      planet_ids=",".join(str(i)[:22] for i in pl["id"])))
-cob = pd.DataFrame(filas)
-cob.to_csv(f"{SALIDA}/cobertura_sitios.csv", index=False)
-print("\n=== Cobertura por sitio / Coverage per site ===")
-print(cob[["sitio", "n_umbra", "miradas", "n_planet_post"]].to_string(index=False))
-gpd.GeoDataFrame(cob, geometry=gpd.points_from_xy(cob.lon, cob.lat), crs="EPSG:4326").to_file(
-    f"{SALIDA}/sitios_danio.geojson", driver="GeoJSON")
-
-# ---------------------------------------------------------------------------
-# 3. Figuras por sitio (una a la vez) / Figures per site (one at a time)
-# ---------------------------------------------------------------------------
-from pyproj import Transformer
-tf = Transformer.from_crs(4326, 32619, always_xy=True)
-hechos = []
+resumen = []
 for nombre, (lat, lon) in SITIOS.items():
     if SITIOS_A_PROCESAR and nombre not in SITIOS_A_PROCESAR:
         continue
-    p = Point(lon, lat)
-    u = umbra[umbra.contains(p) & umbra.url.notna()].sort_values("inicio_utc")
-    pl = planet[planet.contains(p) & planet.url.notna()]
-    if "gsd" in pl:
-        pl = pl.sort_values("gsd")
-    if u.empty:
-        print(f"[–] {nombre}: sin Umbra / no Umbra coverage"); continue
-    cx, cy = tf.transform(lon, lat)
+    cx0, cy0 = A_UTM.transform(lon, lat)
+    chip0 = box(cx0 - LADO_M / 2, cy0 - LADO_M / 2, cx0 + LADO_M / 2, cy0 + LADO_M / 2)
+    cand = umbra_utm[umbra_utm.intersects(chip0)].copy()
+    tiene_umbra = len(cand) > 0
+    if tiene_umbra:
+        cx, cy, cob, desp = centro_optimo(cx0, cy0, cand.geometry, LADO_M)
+    else:
+        cx, cy, cob, desp = cx0, cy0, 0.0, 0.0
+    chip = box(cx - LADO_M / 2, cy - LADO_M / 2, cx + LADO_M / 2, cy + LADO_M / 2)
+    pl = planet_utm[planet_utm.intersects(chip)].copy()
+    pl["cob"] = pl.geometry.intersection(chip).area / chip.area
+    pl = pl.sort_values(["cob", "gsd" if "gsd" in pl else "fecha"], ascending=[False, True])
+
+    paneles = []
     try:
-        pre = rgb(leer(PLANET_PRE, cx, cy, [1, 2, 3]))
-        post = rgb(leer(pl.url.iloc[0], cx, cy, [1, 2, 3])) if len(pl) else None
-        a1 = leer(u.url.iloc[0], cx, cy, [1])[0]
-        a1f = lee(a1)
-        dos_miradas = u.direccion_mirada.nunique() > 1
-        if dos_miradas:
-            u2 = u[u.direccion_mirada != u.direccion_mirada.iloc[0]].iloc[0]
-            a2f = lee(leer(u2.url, cx, cy, [1])[0])
+        paneles.append((rgb(leer(PLANET_PRE, cx, cy, [1, 2, 3], LADO_M)), None, None,
+                        "(a) Planet antes / before · Q1-2026 · 4.8 m"))
+        if len(pl):
+            t = pl.fecha.iloc[0].tz_convert(HORA_LOCAL)
+            paneles.append((rgb(leer(pl.url.iloc[0], cx, cy, [1, 2, 3], LADO_M)), None, None,
+                            f"(b) Planet después / after · {t:%d %b %H:%M} · {pl['gsd'].iloc[0]:.2f} m"))
+        usadas_txt = ""
+        if tiene_umbra:
+            cand["cob"] = cand.geometry.intersection(chip).area / chip.area
+            miradas = (cand.groupby("direccion_mirada").cob.max().sort_values(ascending=False).index.tolist())
+            m1 = miradas[0]
+            a1, us1 = mosaico_mirada(cand[cand.direccion_mirada == m1].sort_values("cob", ascending=False),
+                                     cx, cy, LADO_M)
+            a1f = lee(a1)
+            t1 = us1.inicio_utc.iloc[0].tz_convert(HORA_LOCAL)
+            usadas_txt = f"{m1}: " + ",".join(t[:8] for t in us1.task_id)
+            paneles.append((estirar(db(a1f)), "gray", None,
+                            f"(c) Umbra X amplitud / amplitude (dB, Lee) · {t1:%d %b %H:%M} · {m1}"))
+            paneles.append((estirar(cv_local(a1f), (5, 95)), "magma", None,
+                            "(d) Umbra textura / texture · CV 9×9"))
+            if len(miradas) > 1:
+                m2 = miradas[1]
+                a2, us2 = mosaico_mirada(cand[cand.direccion_mirada == m2].sort_values("cob", ascending=False),
+                                         cx, cy, LADO_M)
+                a2f = lee(a2)
+                izq, der = (a1f, a2f) if m1 == "left" else (a2f, a1f)
+                paneles.append((ndli(izq, der), "RdBu_r", (-0.6, 0.6),
+                                "(e) NDLI = (izq − der)/(izq + der) / (left − right)/(left + right)"))
+                usadas_txt += f" · {m2}: " + ",".join(t[:8] for t in us2.task_id)
+                del a2, a2f
+            del a1, a1f
+        elif coh_nisar:
+            c = leer(coh_nisar[0], cx, cy, [1], LADO_M, res=10)[0]
+            paneles.append((c, "gray", (0, 1), f"(c) Coherencia NISAR / coherence · {os.path.basename(coh_nisar[0])[:24]}"))
     except Exception as e:
-        print(f"[!] {nombre}: {e}"); continue
+        print(f"[!] {nombre}: {e}")
+        continue
 
-    paneles = [(pre, None, "(a) Planet antes / before\nQ1-2026 · ~4.8 m")]
-    if post is not None:
-        t = pl.fecha.iloc[0].tz_convert(HORA_LOCAL)
-        paneles.append((post, None, f"(b) Planet después / after\n{t:%d %b %H:%M} local · "
-                                    f"{pl['gsd'].iloc[0] if 'gsd' in pl else ''} m"))
-    tu = u.inicio_utc.iloc[0].tz_convert(HORA_LOCAL)
-    paneles.append((estirar(db(a1f)), "gray", f"(c) Umbra X amplitud / amplitude (dB, Lee)\n"
-                                              f"{tu:%d %b %H:%M} local · mirada/look {u.direccion_mirada.iloc[0]}"))
-    paneles.append((estirar(cv_local(a1f), (5, 95)), "magma", "(d) Umbra textura / texture\nCV local 9×9"))
-    if dos_miradas:
-        comp = np.dstack([estirar(db(a1f)), estirar(db(a2f)), estirar(db((a1f + a2f) / 2))])
-        comp[~np.isfinite(a1f) | ~np.isfinite(a2f)] = 1
-        paneles.append((comp, None, "(e) Umbra multi-aspecto / multi-aspect\nR = izq./left · G = der./right"))
-
-    fig, axs = plt.subplots(1, len(paneles), figsize=(4.2 * len(paneles), 4.6))
-    for ax, (img, cmap, tit) in zip(np.atleast_1d(axs), paneles):
-        ax.imshow(img, cmap=cmap, interpolation="nearest")
-        ax.set_title(tit, loc="left", fontsize=8.5)
-        ax.set_xticks([]); ax.set_yticks([])
-        barra(ax, img.shape[1])
-    fig.suptitle(f"{nombre.replace('_', ' ')}  ({lat:.4f}° N, {lon:.4f}° W) · {LADO_M} m × {LADO_M} m",
-                 x=0.01, ha="left", fontsize=10.5, weight="bold")
-    fig.text(0.01, 0.01, "Contains Umbra open data, CC BY 4.0 · Imagery © Planet Labs PBC, CC BY-NC 4.0",
-             fontsize=6.5, color="0.35")
-    plt.tight_layout(rect=(0, 0.03, 1, 0.94))
-    ruta = f"{SALIDA}/{nombre}.png"
-    plt.savefig(ruta, dpi=200)
+    # Figura: fila 1 = recorte completo, fila 2 = acercamiento / row 1 = full chip, row 2 = zoom
+    n = len(paneles)
+    fig, axs = plt.subplots(2, n, figsize=(4.0 * n, 8.4), squeeze=False)
+    frac = ZOOM_M / LADO_M
+    for j, (img, cmap, lim, tit) in enumerate(paneles):
+        res_img = LADO_M / img.shape[1]
+        kw = dict(cmap=cmap, interpolation="nearest")
+        if lim:
+            kw.update(vmin=lim[0], vmax=lim[1])
+        im = axs[0, j].imshow(img, **kw)
+        axs[0, j].set_title(tit, loc="left", fontsize=8)
+        k = img.shape[0] * frac / 2; c0 = img.shape[0] / 2
+        axs[0, j].add_patch(Rectangle((c0 - k, c0 - k), 2 * k, 2 * k, fill=False, ec="yellow", lw=1.2))
+        barra(axs[0, j], img.shape[1], res_img, 200)
+        axs[1, j].imshow(recorte(img, frac), **kw)
+        barra(axs[1, j], recorte(img, frac).shape[1], res_img, 50)
+        if cmap == "RdBu_r" or (lim and cmap == "gray"):
+            fig.colorbar(im, ax=axs[:, j], fraction=0.03, pad=0.01)
+        for ax in axs[:, j]:
+            ax.set_xticks([]); ax.set_yticks([])
+    axs[1, 0].set_ylabel(f"Acercamiento / zoom {ZOOM_M} m", fontsize=9)
+    nota = f" · recorte desplazado / chip shifted {desp:.0f} m" if desp > 0 else ""
+    fig.suptitle(f"{nombre.replace('_', ' ')} ({lat:.4f}° N, {lon:.4f}° W) · {LADO_M} m · "
+                 f"cobertura Umbra / coverage {cob:.0%}{nota}", x=0.01, ha="left", fontsize=10.5, weight="bold")
+    fig.text(0.01, 0.005, "Contains Umbra open data, CC BY 4.0 · Imagery © Planet Labs PBC, CC BY-NC 4.0"
+             + (f" · Umbra: {usadas_txt}" if usadas_txt else ""), fontsize=6.5, color="0.35")
+    ruta = f"{SALIDA}/{nombre}_v2.png"
+    plt.savefig(ruta, dpi=200, bbox_inches="tight")
     plt.show()
-    plt.close(fig)
-    hechos.append(ruta)
-    print(f"✓ {nombre} -> {ruta}")
-    # liberar memoria / free memory
-    del pre, post, a1, a1f, paneles
-    if dos_miradas:
-        del a2f, comp
+    plt.close("all")
+    resumen.append(dict(sitio=nombre, umbra=tiene_umbra, cobertura=round(cob, 3),
+                        desplazamiento_m=round(desp), escenas_umbra=usadas_txt,
+                        planet=pl["id"].iloc[0] if len(pl) else None, figura=ruta))
+    del paneles
     gc.collect()
+    print(f"✓ {nombre}: cobertura {cob:.0%}" + (f", desplazado {desp:.0f} m" if desp else ""))
 
-print(f"\nListo / Done: {len(hechos)} sitios. Figuras en {SALIDA}/")
+pd.DataFrame(resumen).to_csv(f"{SALIDA}/resumen_sitios_v2.csv", index=False)
+print(f"\nListo / Done → {SALIDA}/resumen_sitios_v2.csv")

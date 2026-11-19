@@ -4,8 +4,12 @@
 
 **🇪🇸 De la falla a la fachada: observaciones SAR multifrecuencia (bandas C, L y X) y ópticas de alta resolución del doblete sísmico del 24 de junio de 2026 en Venezuela, a lo largo de la costa de La Guaira**
 
-[![Open 01 in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jf-floresriera/SAR_multifrequency/blob/main/notebooks/01_Inventario_Multisensor.ipynb)
-[![Open 02 in Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jf-floresriera/SAR_multifrequency/blob/main/notebooks/02_Procesamiento_InSAR_multifrecuencia.ipynb)
+| Notebook | 🇪🇸 | 🇬🇧 | Colab |
+|---|---|---|---|
+| **01 · Inventario** | Encontrar y clasificar los datos | Find and classify the data | [![Open](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jf-floresriera/SAR_multifrequency/blob/main/notebooks/01_Inventario.ipynb) |
+| **02 · Descargas + HyP3** | Enviar Sentinel-1 a HyP3 y descargar todo | Submit Sentinel-1 to HyP3 and download | [![Open](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jf-floresriera/SAR_multifrequency/blob/main/notebooks/02_Descargas_HyP3.ipynb) |
+| **03 · InSAR C y L** | Deformación: LOS, Este/Vertical, GNSS | Deformation: LOS, East/Up, GNSS | [![Open](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jf-floresriera/SAR_multifrequency/blob/main/notebooks/03_InSAR_C_L.ipynb) |
+| **04 · Daño X + óptico** | Umbra × Planet en sitios de daño | Umbra × Planet at damage sites | [![Open](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/jf-floresriera/SAR_multifrequency/blob/main/notebooks/04_Danio_X_Optico.ipynb) |
 ![License: MIT](https://img.shields.io/badge/code-MIT-blue)
 ![Status](https://img.shields.io/badge/status-in%20progress%20%2F%20en%20curso-orange)
 ![Target](https://img.shields.io/badge/SRL-Focus%20Section%202026-8A2BE2)
@@ -34,10 +38,10 @@
 
 | Step / Paso | 🇬🇧 What is done | 🇪🇸 Qué se hace | Code / Código |
 |---|---|---|---|
-| **1** | Discover every open dataset; classify NISAR GUNW as pre-, co- or post-seismic; Umbra STAC metadata; Umbra × Planet overlaps; Sentinel-1 coseismic pairs; licences and access dates | Buscar todos los datos abiertos; clasificar los GUNW de NISAR en pre, co y postsísmicos; metadatos STAC de Umbra; cruces Umbra × Planet; pares cosísmicos de Sentinel-1; licencias y fechas de acceso | `notebooks/01_…` |
-| **2a** | Phase → LOS (m) with **one sign convention for all sensors**; coherence ≥ 0.3; NISAR ionosphere; common UTM 19N 80 m grid | Fase → LOS (m) con **un solo signo para todos los sensores**; coherencia ≥ 0,3; ionosfera NISAR; grilla común UTM 19N de 80 m | `notebooks/02_…` |
-| **2b** | Umbra GEC amplitude (dB) vs. Planet post-event and the Q1-2026 pre-event mosaic on the same 0.5 m grid | Amplitud Umbra GEC (dB) frente a Planet después del sismo y el mosaico previo del primer trimestre de 2026, en la misma grilla de 0,5 m | `src/cruce_umbra_planet.py` |
-| **3** | Asc + desc least-squares **East/Up**, separately for **C** and **L**; L − C difference maps; GNSS check at CCS1 | **Este/Vertical** por mínimos cuadrados con asc + desc, por separado en **C** y **L**; mapas de diferencia L − C; validación GNSS en CCS1 | `notebooks/02_…` |
+| **1** | Discover every open dataset; classify NISAR GUNW as pre-, co- or post-seismic; Umbra STAC metadata; Umbra × Planet overlaps; Sentinel-1 coseismic pairs; licences and access dates | Buscar todos los datos abiertos; clasificar los GUNW de NISAR en pre, co y postsísmicos; metadatos STAC de Umbra; cruces Umbra × Planet; pares cosísmicos de Sentinel-1; licencias y fechas de acceso | `01_Inventario` · `02_Descargas_HyP3` |
+| **2a** | Phase → LOS (m) with **one sign convention for all sensors**; coherence ≥ 0.3; NISAR ionosphere; common UTM 19N 80 m grid | Fase → LOS (m) con **un solo signo para todos los sensores**; coherencia ≥ 0,3; ionosfera NISAR; grilla común UTM 19N de 80 m | `03_InSAR_C_L` |
+| **2b** | Per damage site: Umbra amplitude (Lee), texture (local CV) and normalised difference look index (NDLI) vs. Planet before/after, with a 300 m zoom | Por sitio de daño: amplitud Umbra (Lee), textura (CV local) e índice de diferencia de miradas (NDLI) frente a Planet antes/después, con acercamiento de 300 m | `04_Danio_X_Optico` |
+| **3** | Asc + desc least-squares **East/Up**, separately for **C** and **L**; L − C difference maps; GNSS check at CCS1 | **Este/Vertical** por mínimos cuadrados con asc + desc, por separado en **C** y **L**; mapas de diferencia L − C; validación GNSS en CCS1 | `03_InSAR_C_L` |
 | **4** | Damage vs. deformation gradient and distance to the fault; airport, port and viaduct profiles | Daño frente a gradiente de deformación y distancia a la falla; perfiles en aeropuerto, puerto y viaducto | *in progress / en curso* |
 | **5** | GitHub release → Zenodo DOI; derived products on Zenodo; *Data and Resources* section | Versión en GitHub → DOI de Zenodo; productos derivados en Zenodo; sección *Data and Resources* | — |
 
@@ -79,7 +83,11 @@
 
 | 🇬🇧 Google Colab (recommended) | 🇪🇸 Google Colab (recomendado) |
 |---|---|
-| 1. Click an **Open in Colab** badge above.<br>2. Run the cells **in order** (cell 1 installs, cell 2 mounts Drive).<br>3. A NASA Earthdata account is needed for downloads and HyP3.<br>4. If Colab restarts, start again from cell 1. Outputs stay in Drive. | 1. Haga clic en un botón **Open in Colab** de arriba.<br>2. Ejecute las celdas **en orden** (la 1 instala, la 2 monta Drive).<br>3. Se necesita cuenta NASA Earthdata para descargar y usar HyP3.<br>4. Si Colab se reinicia, empiece por la celda 1. Los resultados quedan en Drive. |
+| 1. Open notebooks **01 → 02 → 03 → 04** with the badges above.<br>2. Cell **0** installs libraries, pulls the latest code from this repository, mounts Drive and logs the code version (`05_documentacion/versiones_codigo.csv`).<br>3. Every other cell is one line: `%run -i {SRC}/script.py`. All logic lives in `src/`.<br>4. If Colab restarts, run cell 0 again; results already in Drive are kept. | 1. Abra los notebooks **01 → 02 → 03 → 04** con los botones de arriba.<br>2. La celda **0** instala librerías, baja la última versión del código de este repositorio, monta Drive y registra la versión usada (`05_documentacion/versiones_codigo.csv`).<br>3. Las demás celdas son de una línea: `%run -i {SRC}/script.py`. Toda la lógica vive en `src/`.<br>4. Si Colab se reinicia, corra la celda 0 otra vez; lo guardado en Drive no se pierde. |
+
+| 🇬🇧 Development cycle | 🇪🇸 Ciclo de desarrollo |
+|---|---|
+| Error in Colab → fix the script in `src/` on GitHub → re-run cell 0 (pulls the fix) → re-run the cell. Every result is tied to a commit. | Error en Colab → se corrige el script en `src/` en GitHub → se vuelve a correr la celda 0 (baja la corrección) → se vuelve a correr la celda. Cada resultado queda ligado a un commit. |
 
 ```bash
 # Local
@@ -97,10 +105,16 @@ python docs/make_animations.py
 
 ```
 SAR_multifrequency/
-├── notebooks/
-│   ├── 01_Inventario_Multisensor.ipynb               # inventory · HyP3 · downloads / inventario · HyP3 · descargas
-│   └── 02_Procesamiento_InSAR_multifrecuencia.ipynb  # common InSAR · E/U · GNSS / InSAR común · E/V · GNSS
-├── src/                       # same code as scripts / mismo código como scripts
+├── notebooks/                 # short cells: setup + %run / celdas cortas: preparación + %run
+│   ├── 01_Inventario.ipynb
+│   ├── 02_Descargas_HyP3.ipynb
+│   ├── 03_InSAR_C_L.ipynb
+│   └── 04_Danio_X_Optico.ipynb
+├── src/                       # all the logic / toda la lógica
+│   ├── umbra_inventario.py · nisar_filtrar.py · s1_pares_hyp3.py · inventario_multisensor.py   (01)
+│   ├── descargas.py                                                                            (02)
+│   ├── alos2_buscar.py · auxiliares.py · nisar_gunw_a_geotiff.py · s1_hyp3_a_geotiff.py · descomposicion_C_L.py   (03)
+│   └── umbra_planet_sitios.py · exportar_figuras_github.py                                    (04)
 ├── docs/
 │   ├── img/                   # README figures and animations / figuras y animaciones
 │   ├── make_animations.py     # reproducible GIF generator / generador reproducible de GIF
@@ -134,7 +148,8 @@ SAR_multifrequency/
 | ⏳ | Sentinel-1 40 m with look vectors | Sentinel-1 a 40 m con vectores de mirada |
 | ⏳ | ALOS-2 ScanSAR interferometry | Interferometría ALOS-2 ScanSAR |
 | ⏳ | East/Up C vs L and GNSS validation | Este/Vertical C vs L y validación GNSS |
-| ⏳ | Umbra × Planet damage figures | Figuras de daño Umbra × Planet |
+| ✅ | Umbra × Planet first figures (Catia La Mar, Playa Grande, La Guaira) | Primeras figuras Umbra × Planet (Catia La Mar, Playa Grande, La Guaira) |
+| ⏳ | Umbra × Planet v2 (full coverage, NDLI, zoom) | Umbra × Planet v2 (cobertura completa, NDLI, acercamiento) |
 | ⏳ | Manuscript, Zenodo, submission (deadline 21 Dec 2026) | Manuscrito, Zenodo, envío (fecha límite 21 dic 2026) |
 
 ## 10 · Attribution / Atribución

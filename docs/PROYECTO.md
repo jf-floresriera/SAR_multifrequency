@@ -55,7 +55,8 @@
 | 1 | Inventario, filtro cosísmico, huellas, licencias | Inventory, coseismic filter, footprints, licences | `01_Inventario` |
 | 2 | HyP3 (40 m, look vectors) y descargas | HyP3 and downloads | `02_Descargas_HyP3` |
 | 3 | Fase → LOS (m), **un solo signo** (+ = hacia el satélite); coherencia ≥ 0,3; ionosfera NISAR; grilla común UTM 19N 80 m; **Este/Vertical** asc+desc (N ≈ 0, justificado por GNSS dN ≈ −1 cm); validación GNSS; L − C | Phase → LOS, single sign; coherence; ionosphere; common grid; East/Up; GNSS; L − C | `03_InSAR_C_L` |
-| 4 | Daño por sitio: Planet antes/después, Umbra amplitud (Lee 5×5), textura (CV 9×9), **NDLI** = (I_izq − I_der)/(I_izq + I_der) normalizado por mediana, acercamiento 300 m automático (máximo aclaramiento post-sismo) o manual | Damage per site: Planet before/after, Umbra amplitude, texture, NDLI, automatic/manual 300 m zoom | `04_Danio_X_Optico` |
+| 4a | Daño de referencia: HOTOSM (fAIr/Microsoft/OSU, Hugging Face `hotosm/venezuela_eq_2026`) y Copernicus EMS EMSR884; por sitio, zona **dañada** y zona **sin daño** cercana (200–900 m) | Reference damage and contrast zones | `danio_referencia.py` |
+| 4b | Daño por sitio: Planet antes/después, Umbra amplitud (Lee 5×5), textura (CV 9×9), **NDLI** = (I_izq − I_der)/(I_izq + I_der) normalizado por mediana, acercamientos de 400 m sobre zona dañada y zona sin daño (o automático/manual), contornos de edificios por clase de daño y métricas Umbra por clase (base de la Tabla 3) | Damage per site: Planet before/after, Umbra amplitude, texture, NDLI, automatic/manual 300 m zoom | `04_Danio_X_Optico` |
 | 5 | Integración: daño vs gradiente y distancia a la falla; perfiles aeropuerto/puerto/viaducto | Integration | *pendiente* |
 
 Convenciones / conventions: metros, UTC (local = UTC − 4 h), EPSG:32619, NISAR mira a la izquierda y Sentinel-1 a la derecha.
@@ -84,7 +85,7 @@ Decisiones con fecha y justificación / dated decisions: [`docs/notas_procesamie
 | Acceso abierto = CC-BY; **Planet es CC BY-NC** → posible conflicto en figuras con Planet | Consultar a SRL/Planet o elegir opción con cargos de página |
 | Declaración de conflictos de interés; autor de correspondencia con dirección completa; una afiliación principal por autor | Página de título |
 
-Lista oficial / official checklist: [`manuscrito/CHECKLIST_SRL.md`](../manuscrito/CHECKLIST_SRL.md).
+Lista oficial / official checklist: [`manuscrito/CHECKLIST_SRL.md`](../manuscrito/CHECKLIST_SRL.md) · Requisitos de envío / submission requirements: [`manuscrito/REQUISITOS_ENVIO_SRL.md`](../manuscrito/REQUISITOS_ENVIO_SRL.md) · **Estilo de escritura / writing style:** [`manuscrito/GUIA_ESTILO_SRL.md`](../manuscrito/GUIA_ESTILO_SRL.md).
 
 ---
 

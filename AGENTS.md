@@ -1,7 +1,7 @@
 # Contexto para asistentes de IA / Context for AI assistants
 
 Lea primero / Read first: [`docs/PROYECTO.md`](docs/PROYECTO.md) (objetivo, datos, método, reglas SRL, estado) ·
-[`docs/notas_procesamiento.md`](docs/notas_procesamiento.md) (decisiones) · [`manuscrito/`](manuscrito/) (borradores y checklist SRL).
+[`docs/notas_procesamiento.md`](docs/notas_procesamiento.md) (decisiones) · [`manuscrito/`](manuscrito/) (borradores, checklist, requisitos de envío y **guía de estilo SRL**: `manuscrito/GUIA_ESTILO_SRL.md`).
 
 Reglas / Rules:
 - Toda salida (figuras, tablas, pies, mensajes) en **español e inglés** vía `src/comun.py`.

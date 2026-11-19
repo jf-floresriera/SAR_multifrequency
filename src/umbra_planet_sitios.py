@@ -53,7 +53,7 @@ from shapely.ops import unary_union
 _g = globals()
 LADO_M = _g.get("LADO_M", 1000)
 RES_M = _g.get("RES_M", 0.5)
-ZOOM_M = _g.get("ZOOM_M", 300)
+ZOOM_M = _g.get("ZOOM_M", 400)
 SITIOS_A_PROCESAR = _g.get("SITIOS_A_PROCESAR", None)
 # Centros de acercamiento manuales (lat, lon) sobre edificios colapsados conocidos; si no, automático
 # Manual zoom centres (lat, lon) on known collapsed buildings; otherwise automatic
@@ -304,6 +304,20 @@ planet = planet[planet.url.notna()]
 planet_utm = planet.to_crs(CRS)
 print(f"Umbra: {len(umbra)} escenas · Planet: {len(planet)} escenas con URL")
 
+# Daño de referencia (danio_referencia.py): pares de contraste y huellas / contrast pairs and footprints
+DANIO_DIR = "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR/01_datos_crudos/danio_referencia"
+PARES = {}
+if os.path.exists(f"{DANIO_DIR}/pares_contraste.csv"):
+    for _, r_ in pd.read_csv(f"{DANIO_DIR}/pares_contraste.csv").iterrows():
+        PARES[r_.sitio] = ((r_.lat_danio, r_.lon_danio), (r_.lat_sano, r_.lon_sano))
+    print(f"Pares de contraste / contrast pairs: {len(PARES)} sitios")
+EDIF = None
+if os.path.exists(f"{DANIO_DIR}/danio_referencia.gpkg"):
+    EDIF = gpd.read_file(f"{DANIO_DIR}/danio_referencia.gpkg", layer="edificios_danio").to_crs(CRS)
+    print(f"Huellas con daño / damage footprints: {len(EDIF)}")
+COLOR_CLASE = {"destruido": "#B2182B", "dañado": "#F4A582", "posible": "#FDDBC7", "sin_daño": "#4393C3"}
+estadisticas = []
+
 coh_nisar = sorted(glob.glob(f"{NISAR_DIR}/*T126D*_coh.tif")) or sorted(glob.glob(f"{NISAR_DIR}/*_coh.tif"))
 
 
@@ -343,7 +357,7 @@ for nombre, (lat, lon) in SITIOS.items():
     pl = pl.sort_values(["cob", "gsd" if "gsd" in pl else "fecha"], ascending=[False, True])
 
     paneles = []
-    pre_rgb, post_rgb = None, None
+    pre_rgb, post_rgb, metricas = None, None, {}
     try:
         pre_rgb = rgb(leer(PLANET_PRE, cx, cy, [1, 2, 3], LADO_M))
         paneles.append((pre_rgb, None, None,
@@ -369,6 +383,7 @@ for nombre, (lat, lon) in SITIOS.items():
             a1, us1 = mosaico_mirada(cand[cand.direccion_mirada == m1].sort_values("cob", ascending=False),
                                      cx, cy, LADO_M)
             a1f = lee(a1)
+            metricas = {"amp_db": db(a1f), "cv": cv_local(a1f)}
             t1 = us1.inicio_utc.iloc[0].tz_convert(HORA_LOCAL)
             usadas_txt = f"{m1}: " + ",".join(t[:8] for t in us1.task_id)
             paneles.append((estirar(db(a1f)), "gray", None,
@@ -380,7 +395,8 @@ for nombre, (lat, lon) in SITIOS.items():
                                          cx, cy, LADO_M)
                 a2f = lee(a2)
                 izq, der = (a1f, a2f) if m1 == "left" else (a2f, a1f)
-                paneles.append((ndli(izq, der), "RdBu_r", (-0.6, 0.6), lambda i: T("um_ndli", i)))
+                metricas["ndli"] = ndli(izq, der)
+                paneles.append((metricas["ndli"], "RdBu_r", (-0.6, 0.6), lambda i: T("um_ndli", i)))
                 usadas_txt += f" · {m2}: " + ",".join(t[:8] for t in us2.task_id)
                 del a2, a2f
             del a1, a1f
@@ -392,39 +408,92 @@ for nombre, (lat, lon) in SITIOS.items():
         print(f"[!] {nombre}: {e}")
         continue
 
-    # Centro del acercamiento: manual (ZOOM_CENTROS) o automático / zoom centre: manual or automatic
+    # Acercamientos: contraste dañado/sano (danio_referencia.py), manual (ZOOM_CENTROS) o automático
+    # Zooms: damaged/undamaged contrast, manual or automatic
     frac = ZOOM_M / LADO_M
     npx = paneles[0][0].shape[0]
-    if nombre in ZOOM_CENTROS:
-        zlat, zlon = ZOOM_CENTROS[nombre]
-        zx, zy = A_UTM.transform(zlon, zlat)
-        zc = (int((cy + LADO_M / 2 - zy) / LADO_M * npx), int((zx - (cx - LADO_M / 2)) / LADO_M * npx))
-        modo_zoom = "manual"
-    else:
-        zc = centro_zoom(pre_rgb, post_rgb, frac)
-        modo_zoom = "auto"
-    zx_m = cx - LADO_M / 2 + zc[1] / npx * LADO_M
-    zy_m = cy + LADO_M / 2 - zc[0] / npx * LADO_M
-    zlon_, zlat_ = Transformer.from_crs(32619, 4326, always_xy=True).transform(zx_m, zy_m)
+    a_geo = Transformer.from_crs(32619, 4326, always_xy=True)
 
-    # Figura estilo SRL: cuadrícula compacta, etiquetas (a)(b)… fuera arriba-izquierda, sin título
-    # SRL-style figure: compact grid, (a)(b)… labels outside top-left, no title (text goes in the caption)
+    def a_pix(lat_, lon_):
+        x_, y_ = A_UTM.transform(lon_, lat_)
+        return (int((cy + LADO_M / 2 - y_) / LADO_M * npx), int((x_ - (cx - LADO_M / 2)) / LADO_M * npx))
+
+    zooms = []          # (clave_es, clave_en, (fila, col), color)
+    if nombre in PARES:
+        zooms.append(("zona dañada", "damaged zone", a_pix(*PARES[nombre][0]), "#D7301F"))
+        zooms.append(("zona sin daño", "undamaged zone", a_pix(*PARES[nombre][1]), "#2B8CBE"))
+    elif nombre in ZOOM_CENTROS:
+        zooms.append(("acercamiento manual", "manual zoom", a_pix(*ZOOM_CENTROS[nombre]), "#FFD400"))
+    else:
+        zooms.append(("acercamiento automático", "automatic zoom", centro_zoom(pre_rgb, post_rgb, frac), "#FFD400"))
+    # descartar acercamientos fuera del recorte / drop zooms outside the chip
+    zooms = [z for z in zooms if 0 <= z[2][0] < npx and 0 <= z[2][1] < npx] or \
+            [("acercamiento automático", "automatic zoom", centro_zoom(pre_rgb, post_rgb, frac), "#FFD400")]
+
+    def geo_de(zc_):
+        x_ = cx - LADO_M / 2 + zc_[1] / npx * LADO_M; y_ = cy + LADO_M / 2 - zc_[0] / npx * LADO_M
+        lo_, la_ = a_geo.transform(x_, y_)
+        return la_, lo_
+
+    # Huellas de edificios dentro del recorte / footprints inside the chip
+    edif_chip = None
+    if EDIF is not None:
+        edif_chip = EDIF[EDIF.intersects(box(cx - LADO_M / 2, cy - LADO_M / 2, cx + LADO_M / 2, cy + LADO_M / 2))]
+    j_post = 1 if post_rgb is not None else None
+
+    def dibujar_huellas(ax, zc_, dato_shape):
+        """Contornos de edificios coloreados por clase en un panel de acercamiento."""
+        if edif_chip is None or edif_chip.empty:
+            return
+        k_ = int(npx * frac / 2)
+        r0 = min(max(zc_[0], k_), npx - k_) - k_; c0 = min(max(zc_[1], k_), npx - k_) - k_
+        x0 = cx - LADO_M / 2 + c0 / npx * LADO_M; y0 = cy + LADO_M / 2 - r0 / npx * LADO_M
+        esc = npx / LADO_M
+        for _, e in edif_chip.iterrows():
+            geoms = getattr(e.geometry, "geoms", [e.geometry])
+            for g_ in geoms:
+                if not hasattr(g_, "exterior"):
+                    continue
+                xs, ys = g_.exterior.xy
+                px = (np.asarray(xs) - x0) * esc; py = (y0 - np.asarray(ys)) * esc
+                if px.max() < 0 or py.max() < 0 or px.min() > dato_shape[1] or py.min() > dato_shape[0]:
+                    continue
+                ax.plot(px, py, color=COLOR_CLASE.get(e.clase, "white"), lw=0.6)
+        ax.set_xlim(0, dato_shape[1]); ax.set_ylim(dato_shape[0], 0)
+
+    # Estadísticas por clase de daño (edificios del recorte) / statistics per damage class
+    if metricas and edif_chip is not None and not edif_chip.empty:
+        for _, e in edif_chip.iterrows():
+            c_ = e.geometry.centroid
+            r_, q_ = int((cy + LADO_M / 2 - c_.y) / LADO_M * npx), int((c_.x - (cx - LADO_M / 2)) / LADO_M * npx)
+            if not (3 <= r_ < npx - 3 and 3 <= q_ < npx - 3):
+                continue
+            fila_ = dict(sitio=nombre, clase=e.clase, fuente=e.fuente)
+            for m_, arr_ in metricas.items():
+                fila_[m_] = float(np.nanmedian(arr_[r_ - 3:r_ + 4, q_ - 3:q_ + 4]))
+            estadisticas.append(fila_)
+
+    # Figura SRL: fila 1 = recorte; filas siguientes = un acercamiento cada una
     def _fig(idioma):
-        n = len(paneles)
-        ancho = 7.2                                  # pulgadas ≈ ancho de página / page width
+        n = len(paneles); nf = 1 + len(zooms)
+        ancho = 7.2
         lado = (ancho - 0.1) / n
-        fig = plt.figure(figsize=(ancho, 2 * lado + 0.70))
-        gs = fig.add_gridspec(2, n, wspace=0.04, hspace=0.10, left=0.005, right=0.995,
-                              top=1 - 0.18 / (2 * lado + 0.70), bottom=0.60 / (2 * lado + 0.70))
-        letras = "abcdefghijklmnop"
+        alto = nf * lado + 0.75
+        fig = plt.figure(figsize=(ancho, alto))
+        gs = fig.add_gridspec(nf, n, wspace=0.04, hspace=0.10, left=0.03, right=0.995,
+                              top=1 - 0.18 / alto, bottom=0.62 / alto)
+        letras = "abcdefghijklmnopqrstuvwxyz"
         for j, (img, cmap, lim, tit) in enumerate(paneles):
             res_img = LADO_M / img.shape[1]
             kw = dict(cmap=cmap, interpolation="nearest")
             if lim:
                 kw.update(vmin=lim[0], vmax=lim[1])
-            for fila in (0, 1):
+            for fila in range(nf):
                 ax = fig.add_subplot(gs[fila, j])
-                dato = img if fila == 0 else recorte(img, frac, zc)
+                if fila == 0:
+                    dato = img
+                else:
+                    dato = recorte(img, frac, zooms[fila - 1][2])
                 im = ax.imshow(dato, **kw)
                 ax.set_xticks([]); ax.set_yticks([])
                 for sp in ax.spines.values():
@@ -433,52 +502,86 @@ for nombre, (lat, lon) in SITIOS.items():
                         ha="left", va="bottom", fontsize=8, weight="bold")
                 if fila == 0:
                     k = img.shape[0] * frac / 2
-                    r0, c0 = min(max(zc[0], k), img.shape[0] - k), min(max(zc[1], k), img.shape[1] - k)
-                    ax.add_patch(Rectangle((c0 - k, r0 - k), 2 * k, 2 * k, fill=False, ec="#FFD400", lw=1.0))
+                    for _, _, zc_, col_ in zooms:
+                        r0, c0 = min(max(zc_[0], k), img.shape[0] - k), min(max(zc_[1], k), img.shape[1] - k)
+                        ax.add_patch(Rectangle((c0 - k, r0 - k), 2 * k, 2 * k, fill=False, ec=col_, lw=1.1))
                     barra(ax, img.shape[1], res_img, 200)
                 else:
-                    barra(ax, dato.shape[1], res_img, 50)
-                if fila == 1 and (cmap == "RdBu_r" or (lim and cmap == "gray")):
+                    zc_, col_ = zooms[fila - 1][2], zooms[fila - 1][3]
+                    for sp in ax.spines.values():
+                        sp.set_edgecolor(col_); sp.set_linewidth(1.4)
+                    if j == j_post:
+                        dibujar_huellas(ax, zc_, dato.shape)
+                    barra(ax, dato.shape[1], res_img, 100)
+                    if j == 0:
+                        ax.set_ylabel(zooms[fila - 1][0 if idioma == "es" else 1], fontsize=7.5)
+                if fila == nf - 1 and (cmap == "RdBu_r" or (lim and cmap == "gray")):
                     cax = ax.inset_axes([0.05, -0.10, 0.9, 0.045])
                     cb = fig.colorbar(im, cax=cax, orientation="horizontal")
                     cb.ax.tick_params(labelsize=6, length=2)
+        if edif_chip is not None and not edif_chip.empty and j_post is not None:
+            from matplotlib.lines import Line2D
+            nombres = {"es": {"destruido": "destruido", "dañado": "dañado", "posible": "posible", "sin_daño": "sin daño"},
+                       "en": {"destruido": "destroyed", "dañado": "damaged", "posible": "possible", "sin_daño": "no damage"}}
+            fig.legend([Line2D([], [], color=c, lw=1.5) for c in COLOR_CLASE.values()],
+                       [nombres[idioma][k] for k in COLOR_CLASE], loc="lower right", ncol=4, fontsize=6.5,
+                       frameon=False, bbox_to_anchor=(0.995, 0.0))
         fig.text(0.005, 0.005, "Umbra: CC BY 4.0 · Planet Labs PBC: CC BY-NC 4.0", fontsize=6, color="0.35")
         return fig
 
     rutas = guardar_bilingue(_fig, f"{SALIDA}/{nombre}_v3", formatos=("png", "pdf"), dpi=300)
 
-    # Pie de figura bilingüe (SRL: la descripción va en el pie, no en la figura) / bilingual caption
-    letras = "abcdefghijklmnop"
+    # Pie de figura bilingüe / bilingual caption
+    letras = "abcdefghijklmnopqrstuvwxyz"
+    n = len(paneles)
     for idioma in ("es", "en"):
-        n = len(paneles)
         partes = [f"({letras[j]}) {p[3](idioma).split(') ', 1)[-1]}" for j, p in enumerate(paneles)]
+        filas_z = []
+        for f_, (e_es, e_en, zc_, _) in enumerate(zooms, start=1):
+            la_, lo_ = geo_de(zc_)
+            rango = f"({letras[f_ * n]})–({letras[f_ * n + n - 1]})"
+            filas_z.append(f"{rango}: {e_es if idioma == 'es' else e_en} ({la_:.4f}° N, {abs(lo_):.4f}° "
+                           f"{'O' if idioma == 'es' else 'W'})")
         if idioma == "es":
-            txt = (f"{nombre.replace('_', ' ')} ({lat:.4f}° N, {abs(lon):.4f}° O). Fila superior: recorte de "
-                   f"{LADO_M} m × {LADO_M} m; fila inferior ({letras[n]})–({letras[2 * n - 1]}): acercamiento de "
-                   f"{ZOOM_M} m (recuadro amarillo, centrado en {zlat_:.4f}° N, {abs(zlon_):.4f}° O, selección {modo_zoom}). "
-                   + "; ".join(partes) + f". Cobertura Umbra {cob:.0%}"
-                   + (f"; recorte desplazado {desp:.0f} m respecto al sitio" if desp else "") + ". "
+            txt = (f"{nombre.replace('_', ' ')} ({lat:.4f}° N, {abs(lon):.4f}° O). Fila superior: recorte de {LADO_M} m × "
+                   f"{LADO_M} m; " + "; ".join(partes) + f". Acercamientos de {ZOOM_M} m (recuadros de color): "
+                   + "; ".join(filas_z) + ". "
+                   + ("Contornos de edificios coloreados según la clase de daño de referencia (rojo: destruido; "
+                      "naranja: dañado; rosa: posible; azul: sin daño visible). " if edif_chip is not None and len(edif_chip) else "")
+                   + f"Cobertura Umbra {cob:.0%}" + (f"; recorte desplazado {desp:.0f} m" if desp else "") + ". "
                    + (f"Escenas Umbra: {usadas_txt}. " if usadas_txt else "")
                    + "Contiene datos abiertos de Umbra (CC BY 4.0); imágenes © Planet Labs PBC (CC BY-NC 4.0).")
         else:
-            txt = (f"{nombre.replace('_', ' ')} ({lat:.4f}° N, {abs(lon):.4f}° W). Top row: {LADO_M} m × {LADO_M} m "
-                   f"chip; bottom row ({letras[n]})–({letras[2 * n - 1]}): {ZOOM_M} m zoom (yellow box, centred at "
-                   f"{zlat_:.4f}° N, {abs(zlon_):.4f}° W, {modo_zoom} selection). " + "; ".join(partes)
-                   + f". Umbra coverage {cob:.0%}" + (f"; chip shifted {desp:.0f} m from the site" if desp else "")
-                   + ". " + (f"Umbra scenes: {usadas_txt}. " if usadas_txt else "")
+            txt = (f"{nombre.replace('_', ' ')} ({lat:.4f}° N, {abs(lon):.4f}° W). Top row: {LADO_M} m × {LADO_M} m chip; "
+                   + "; ".join(partes) + f". {ZOOM_M} m zooms (coloured boxes): " + "; ".join(filas_z) + ". "
+                   + ("Building outlines coloured by reference damage class (red: destroyed; orange: damaged; "
+                      "pink: possibly damaged; blue: no visible damage). " if edif_chip is not None and len(edif_chip) else "")
+                   + f"Umbra coverage {cob:.0%}" + (f"; chip shifted {desp:.0f} m" if desp else "") + ". "
+                   + (f"Umbra scenes: {usadas_txt}. " if usadas_txt else "")
                    + "Contains Umbra open data (CC BY 4.0); imagery © Planet Labs PBC (CC BY-NC 4.0).")
         open(f"{SALIDA}/{nombre}_v3_pie_{idioma}.txt", "w", encoding="utf-8").write(txt + "\n")
 
     resumen.append(dict(sitio=nombre, umbra=tiene_umbra, cobertura=round(cob, 3),
                         desplazamiento_m=round(desp), escenas_umbra=usadas_txt,
                         planet=pl["id"].iloc[0] if len(pl) else None, figura=rutas[0],
-                        zoom_lat=round(zlat_, 5), zoom_lon=round(zlon_, 5), zoom_modo=modo_zoom))
-    del paneles, pre_rgb, post_rgb
+                        acercamientos="; ".join(f"{z[1]} {geo_de(z[2])[0]:.5f},{geo_de(z[2])[1]:.5f}" for z in zooms)))
+    del paneles, pre_rgb, post_rgb, metricas
     gc.collect()
     print(f"✓ {nombre}: cobertura {cob:.0%}" + (f", desplazado {desp:.0f} m" if desp else "")
-          + f" · zoom {modo_zoom} ({zlat_:.4f}, {zlon_:.4f})")
+          + " · " + ", ".join(z[1] for z in zooms))
     for r_ in rutas:
         print("    ", r_)
 
 csv_bilingue(pd.DataFrame(resumen), f"{SALIDA}/resumen_sitios_v3.csv")
+if estadisticas:
+    import comun
+    comun.COLS_EN.update({"clase": "class", "amp_db": "amplitude_dB", "cv": "local_CV", "ndli": "NDLI"})
+    comun.VALORES_EN.update({"destruido": "destroyed", "dañado": "damaged", "posible": "possibly damaged",
+                             "sin_daño": "no visible damage"})
+    est = pd.DataFrame(estadisticas)
+    csv_bilingue(est, f"{SALIDA}/metricas_por_edificio.csv")
+    tabla = est.groupby(["sitio", "clase"])[[c for c in ("amp_db", "cv", "ndli") if c in est]].agg(["median", "count"]).round(3)
+    csv_bilingue(tabla, f"{SALIDA}/metricas_por_clase.csv", index=True)
+    print("\n=== Métricas Umbra por clase de daño / Umbra metrics per damage class (mediana) ===")
+    print(tabla.to_string())
 print(f"\nListo / Done → {SALIDA}/resumen_sitios_v3.csv · figuras _es/_en (.png, .pdf) y pies de figura _pie_es/_pie_en.txt")

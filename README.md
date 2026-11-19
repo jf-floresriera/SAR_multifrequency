@@ -16,7 +16,7 @@
 
 | 🇬🇧 English | 🇪🇸 Español |
 |---|---|
-| 📘 **Project master document / Documento maestro:** [`docs/PROYECTO.md`](docs/PROYECTO.md) · **Manuscript / Manuscrito:** [`manuscrito/`](manuscrito/) · **SRL checklist:** [`manuscrito/CHECKLIST_SRL.md`](manuscrito/CHECKLIST_SRL.md) | 📘 Documento maestro, manuscrito y lista de verificación SRL (mismos enlaces). |
+| 📘 **Project master document / Documento maestro:** [`docs/PROYECTO.md`](docs/PROYECTO.md) · **Manuscript / Manuscrito:** [`manuscrito/`](manuscrito/) · **SRL checklist:** [`manuscrito/CHECKLIST_SRL.md`](manuscrito/CHECKLIST_SRL.md) · **Submission requirements:** [`manuscrito/REQUISITOS_ENVIO_SRL.md`](manuscrito/REQUISITOS_ENVIO_SRL.md) · **Writing style:** [`manuscrito/GUIA_ESTILO_SRL.md`](manuscrito/GUIA_ESTILO_SRL.md) | 📘 Documento maestro, manuscrito y lista de verificación SRL (mismos enlaces). |
 | Reproducible, open-data workflow for a manuscript in preparation for the *Seismological Research Letters* Focus Section on the **2026 Venezuela, Colombia and Panama Earthquakes**. | Flujo de trabajo reproducible y con datos abiertos para un artículo en preparación para la sección especial de *Seismological Research Letters* sobre los **sismos de 2026 en Venezuela, Colombia y Panamá**. |
 
 ---
@@ -63,6 +63,7 @@
 | Optical / Óptico | Planet SkySat · PlanetScope | 17 post-event / después + Q1-2026 mosaic / mosaico previo | 26–28 Jun · Jan–Mar | CC BY-NC 4.0 (not redistributed / no se redistribuye) |
 | Optical / Óptico | Sentinel-2 L2A | True colour / color verdadero | Jun–Jul | Copernicus |
 | GNSS | CCS1 (+ others / otras) | Coseismic offsets for validation / desplazamientos para validar | — | Cited / citado |
+| Damage reference / Daño de referencia | HOTOSM (fAIr · Microsoft · OSU) · Copernicus EMS EMSR884 | Building-level damage classes / clases de daño por edificio | — | see sources / ver fuentes |
 | Base maps / Mapas base | geoBoundaries · GEM GAF-DB · OpenStreetMap · USGS | States, municipalities, active faults, main roads, epicentres / estados, municipios, fallas activas, vías, epicentros | — | CC BY 4.0 · CC BY-SA 4.0 · ODbL · public domain |
 
 | 🇪🇸 Español | 🇬🇧 English |
@@ -129,7 +130,7 @@ SAR_multifrequency/
 │   ├── umbra_inventario.py · nisar_filtrar.py · s1_pares_hyp3.py · inventario_multisensor.py · mapas_base.py   (01)
 │   ├── descargas.py · hyp3_estado.py                                                           (02)
 │   ├── alos2_buscar.py · auxiliares.py · nisar_gunw_a_geotiff.py · s1_hyp3_a_geotiff.py · descomposicion_C_L.py   (03)
-│   ├── umbra_planet_sitios.py · exportar_figuras_github.py                                    (04)
+│   ├── danio_referencia.py · umbra_planet_sitios.py · exportar_figuras_github.py               (04)
 │   └── comun.py   # ES/EN outputs + logs / salidas ES/EN + registros
 ├── docs/
 │   ├── img/                   # README figures and animations / figuras y animaciones

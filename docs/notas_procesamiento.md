@@ -18,6 +18,8 @@
 | 2026-11-19 | Figuras formato SRL / SRL-style figures | sin título, (a)(b) fuera, 7.2 in, ≥ 6 pt, pies bilingües aparte | Guía de envío SRL / SRL submission guidelines |
 | 2026-11-19 | Acercamiento automático / automatic zoom | máximo aclaramiento post-sismo (polvo/escombros), excluye mar | Zoom informativo en vez del centro / informative zoom instead of centre |
 | 2026-11-19 | HyP3 duplicados / duplicates | 025D enviado 4 veces; se usa uno, resto a `_duplicados` | Evitar productos repetidos / avoid duplicate products |
+| 2026-11-19 | Zonas de contraste / contrast zones | dañada = máx. edificios destruidos/dañados en 100 m; sana = 200–900 m, sin dañados a < 150 m | Comparar respuesta radar/óptica dañado vs sano / compare radar-optical response |
+| 2026-11-19 | Acercamiento / zoom | 400 m (antes 300 m), escala 100 m | Mejor legibilidad / better legibility |
 
 ## Pendientes / To do
 - [ ] Coordenadas exactas de CCS1 (ficha NGL / IGVSB)

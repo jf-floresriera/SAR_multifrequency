@@ -290,14 +290,29 @@ for nombre, (lat, lon) in SITIOS.items():
         continue
     cx0, cy0 = A_UTM.transform(lon, lat)
     chip0 = box(cx0 - LADO_M / 2, cy0 - LADO_M / 2, cx0 + LADO_M / 2, cy0 + LADO_M / 2)
-    cand = umbra_utm[umbra_utm.intersects(chip0)].copy()
+    vecindad = Point(cx0, cy0).buffer(2 * LADO_M)
+    cand = umbra_utm[umbra_utm.intersects(vecindad)].copy()
+    pl_cand = planet_utm[planet_utm.intersects(vecindad)].copy()
     tiene_umbra = len(cand) > 0
-    if tiene_umbra:
-        cx, cy, cob, desp = centro_optimo(cx0, cy0, cand.geometry, LADO_M)
+    # Zona válida = donde hay Umbra Y Planet después (para que ningún panel quede en blanco)
+    # Valid zone = where both Umbra AND Planet-after exist (so no panel is left blank)
+    if tiene_umbra and len(pl_cand):
+        zona = unary_union(list(cand.geometry)).intersection(unary_union(list(pl_cand.geometry)))
+        huellas = [zona] if not zona.is_empty else list(cand.geometry)
+    elif tiene_umbra:
+        huellas = list(cand.geometry)
+    elif len(pl_cand):
+        huellas = list(pl_cand.geometry)
+    else:
+        huellas = []
+    if huellas:
+        cx, cy, cob, desp = centro_optimo(cx0, cy0, huellas, LADO_M)
     else:
         cx, cy, cob, desp = cx0, cy0, 0.0, 0.0
     chip = box(cx - LADO_M / 2, cy - LADO_M / 2, cx + LADO_M / 2, cy + LADO_M / 2)
-    pl = planet_utm[planet_utm.intersects(chip)].copy()
+    cand = cand[cand.intersects(chip)].copy()
+    tiene_umbra = len(cand) > 0
+    pl = pl_cand[pl_cand.intersects(chip)].copy()
     pl["cob"] = pl.geometry.intersection(chip).area / chip.area
     pl = pl.sort_values(["cob", "gsd" if "gsd" in pl else "fecha"], ascending=[False, True])
 
@@ -308,7 +323,14 @@ for nombre, (lat, lon) in SITIOS.items():
         if len(pl):
             t = pl.fecha.iloc[0].tz_convert(HORA_LOCAL)
             g_ = pl["gsd"].iloc[0]
-            paneles.append((rgb(leer(pl.url.iloc[0], cx, cy, [1, 2, 3], LADO_M)), None, None,
+            post = leer(pl.url.iloc[0], cx, cy, [1, 2, 3], LADO_M)
+            for u_ in pl.url.iloc[1:]:                     # rellenar huecos con otras escenas / fill gaps
+                hueco = ~np.isfinite(post).any(axis=0)
+                if not hueco.any():
+                    break
+                extra = leer(u_, cx, cy, [1, 2, 3], LADO_M)
+                post[:, hueco] = extra[:, hueco]
+            paneles.append((rgb(post), None, None,
                             lambda i, t=t, g_=g_: T("pl_despues", i, t=f"{t:%d %b %H:%M}", g=f"{g_:.2f}")))
         usadas_txt = ""
         if tiene_umbra:

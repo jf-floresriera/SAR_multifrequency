@@ -22,9 +22,18 @@ for z in glob.glob(f"{S1_IN}/*.zip"):
     if not os.path.isdir(destino):
         zipfile.ZipFile(z).extractall(os.path.dirname(z))
 
+import re as _re
+_vistos = set()
 for carpeta in sorted(glob.glob(f"{S1_IN}/S1*_INT*")):
     if not os.path.isdir(carpeta):
         continue
+    _par = _re.sub(r"_[0-9A-F]{4}$", "", os.path.basename(carpeta))
+    # si existe la versión a 40 m del mismo par, se omite la de 80 m / skip 80 m when 40 m exists
+    if "INT80" in _par and glob.glob(f"{S1_IN}/{_par.replace('INT80', 'INT40')}*"):
+        print("   80 m omitido (hay 40 m) / 80 m skipped (40 m exists):", os.path.basename(carpeta)); continue
+    if _par in _vistos:
+        print("   duplicado omitido / duplicate skipped:", os.path.basename(carpeta)); continue
+    _vistos.add(_par)
     unw = glob.glob(f"{carpeta}/*_unw_phase.tif")
     if not unw:
         continue

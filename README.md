@@ -62,6 +62,7 @@
 | Optical / Óptico | Planet SkySat · PlanetScope | 17 post-event / después + Q1-2026 mosaic / mosaico previo | 26–28 Jun · Jan–Mar | CC BY-NC 4.0 (not redistributed / no se redistribuye) |
 | Optical / Óptico | Sentinel-2 L2A | True colour / color verdadero | Jun–Jul | Copernicus |
 | GNSS | CCS1 (+ others / otras) | Coseismic offsets for validation / desplazamientos para validar | — | Cited / citado |
+| Base maps / Mapas base | geoBoundaries · GEM GAF-DB · OpenStreetMap · USGS | States, municipalities, active faults, main roads, epicentres / estados, municipios, fallas activas, vías, epicentros | — | CC BY 4.0 · CC BY-SA 4.0 · ODbL · public domain |
 
 | 🇪🇸 Español | 🇬🇧 English |
 |---|---|
@@ -124,7 +125,7 @@ SAR_multifrequency/
 │   ├── 03_InSAR_C_L.ipynb
 │   └── 04_Danio_X_Optico.ipynb
 ├── src/                       # all the logic / toda la lógica
-│   ├── umbra_inventario.py · nisar_filtrar.py · s1_pares_hyp3.py · inventario_multisensor.py   (01)
+│   ├── umbra_inventario.py · nisar_filtrar.py · s1_pares_hyp3.py · inventario_multisensor.py · mapas_base.py   (01)
 │   ├── descargas.py · hyp3_estado.py                                                           (02)
 │   ├── alos2_buscar.py · auxiliares.py · nisar_gunw_a_geotiff.py · s1_hyp3_a_geotiff.py · descomposicion_C_L.py   (03)
 │   ├── umbra_planet_sitios.py · exportar_figuras_github.py                                    (04)

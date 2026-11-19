@@ -1,0 +1,10 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "GUAIRA-SAR: multi-frequency SAR (C-, L-, X-band) and optical workflow for the 24 June 2026 Venezuela earthquake doublet"
+authors:
+  - name: "jf-floresriera"
+repository-code: "https://github.com/jf-floresriera/SAR_multifrequency"
+license: MIT
+version: 0.1.0
+date-released: 2026-11-19
+keywords: [InSAR, NISAR, Sentinel-1, ALOS-2, Umbra, Planet, earthquake, Venezuela, San Sebastián fault]

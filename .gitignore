@@ -1,0 +1,15 @@
+# datos pesados: nunca al repositorio
+*.h5
+*.zip
+*.tif
+!docs/img/*.tif
+*.tiff
+*.nitf
+*.ntf
+*.cphd
+*.parquet
+datos*/
+01_datos_crudos/
+02_procesados/
+.ipynb_checkpoints/
+__pycache__/

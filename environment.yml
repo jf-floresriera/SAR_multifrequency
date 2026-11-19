@@ -1,0 +1,23 @@
+name: guaira-sar
+channels: [conda-forge]
+dependencies:
+  - python=3.11
+  - numpy
+  - pandas
+  - matplotlib
+  - geopandas
+  - shapely
+  - rasterio
+  - pyproj
+  - h5py
+  - contextily
+  - pyarrow
+  - duckdb
+  - boto3
+  - requests
+  - pystac-client
+  - jupyterlab
+  - pip
+  - pip:
+      - asf_search
+      - hyp3_sdk

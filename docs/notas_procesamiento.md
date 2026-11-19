@@ -20,6 +20,7 @@
 | 2026-11-19 | HyP3 duplicados / duplicates | 025D enviado 4 veces; se usa uno, resto a `_duplicados` | Evitar productos repetidos / avoid duplicate products |
 | 2026-11-19 | Zonas de contraste / contrast zones | dañada = máx. edificios destruidos/dañados en 100 m; sana = 200–900 m, sin dañados a < 150 m | Comparar respuesta radar/óptica dañado vs sano / compare radar-optical response |
 | 2026-11-19 | Acercamiento / zoom | 400 m (antes 300 m), escala 100 m | Mejor legibilidad / better legibility |
+| 2026-11-19 | Daño HOTOSM: archivos usados / files used | `<zona>_damage_polygons.geojson` (fusión fAIr/Microsoft) + `venezuela_validated_damage.geojson`; zonas Catia La Mar, La Guaira, Caraballeda, Naiguatá, Carayaca; recorte a la costa de La Guaira | Evita duplicados y colapso de memoria; etiquetas xView2 (no-/minor-/major-damage, destroyed) / avoids duplicates and memory crash |
 
 ## Pendientes / To do
 - [ ] Coordenadas exactas de CCS1 (ficha NGL / IGVSB)

@@ -44,23 +44,25 @@ SITIOS = {
     "La_Guaira": (10.6000, -66.9331), "Caraballeda": (10.6122, -66.8519),
     "Tanaguarena": (10.6150, -66.8200), "Naiguata": (10.6200, -66.7400),
 }
-EXT_VECT = (".geojson", ".gpkg", ".parquet", ".fgb", ".shp")
 
 
 # --------------------------------------------------------------------------
 # Normalización de clases de daño / damage class normalisation
 # --------------------------------------------------------------------------
 def clase_normalizada(v):
+    """Etiquetas tipo xView2/HOTOSM (no-damage, minor-damage, major-damage, destroyed), CEMS y booleanas."""
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return None
-    s = str(v).strip().lower()
-    if s in ("4", "3.0") or any(k in s for k in ("destroy", "destru", "collaps", "colaps")):
+    s = str(v).strip().lower().replace("-", " ").replace("_", " ")
+    if s in ("", "nan", "none", "un classified", "unclassified", "unknown"):
+        return None
+    if s.startswith("no ") or s in ("0", "0.0", "false", "intact") or "sin da" in s or "undamag" in s or "no visible" in s:
+        return "sin_daño"
+    if any(k in s for k in ("destroy", "destru", "collaps", "colaps")):
         return "destruido"
     if any(k in s for k in ("possib", "posib", "probabl")):
         return "posible"
-    if s in ("0", "0.0") or any(k in s for k in ("no damage", "no visible", "sin da", "undamag", "none", "intact")):
-        return "sin_daño"
-    if s in ("1", "2", "1.0", "2.0") or any(k in s for k in ("damag", "dañ", "dan", "major", "minor", "moderate", "severe")):
+    if s in ("1", "1.0", "true") or any(k in s for k in ("damag", "dañ", "major", "minor", "moderate", "severe")):
         return "dañado"
     return None
 
@@ -75,28 +77,30 @@ def columna_danio(df):
     return None
 
 
-def leer_vectores(carpeta, fuente):
-    capas = []
-    for f in glob.glob(f"{carpeta}/**/*", recursive=True):
-        if not f.lower().endswith(EXT_VECT):
-            continue
-        try:
-            g = gpd.read_parquet(f) if f.endswith(".parquet") else gpd.read_file(f)
-        except Exception:
-            continue
-        if g.empty or g.crs is None:
-            continue
-        col = columna_danio(g)
-        if col is None:
-            continue
-        g = g.to_crs(4326)
-        g["clase"] = g[col].map(clase_normalizada)
-        g["fuente"] = fuente
-        g["archivo"] = os.path.relpath(f, OUT)
-        g["valor_original"] = g[col].astype(str)
-        capas.append(g[["clase", "fuente", "archivo", "valor_original", "geometry"]].dropna(subset=["clase"]))
-        print(f"   {fuente}: {os.path.basename(f)} · columna/column '{col}' · {len(capas[-1])} elementos")
-    return capas
+AREA_ESTUDIO = (-67.25, 10.50, -66.60, 10.70)          # costa de La Guaira (lon_min, lat_min, lon_max, lat_max)
+ZONAS_HOT = globals().get("ZONAS_HOT", ["catia_la_mar", "la_guaira", "caraballeda", "naiguata", "carayaca"])
+
+
+def leer_vector(f, fuente, columna=None, extra=None):
+    """Lee UN archivo, recortado al área de estudio, solo con la columna de daño. Low-memory read."""
+    try:
+        g = gpd.read_file(f, bbox=AREA_ESTUDIO)
+    except Exception as e:
+        print(f"   [!] {os.path.basename(f)}: {e}"); return None
+    if g.empty:
+        return None
+    col = columna if columna in g.columns else columna_danio(g)
+    if col is None:
+        print(f"   [–] {os.path.basename(f)}: sin columna de daño / no damage column"); return None
+    vc = g[col].astype(str).value_counts().head(8)
+    print(f"   {fuente}: {os.path.basename(f)} · '{col}' · {len(g)} · valores/values: {dict(vc)}")
+    g = g.to_crs(4326)
+    out = gpd.GeoDataFrame({"clase": g[col].map(clase_normalizada), "valor_original": g[col].astype(str),
+                            "fuente": fuente, "archivo": os.path.basename(f)}, geometry=g.geometry, crs=4326)
+    if extra:
+        for k, v in extra.items():
+            out[k] = v
+    return out.dropna(subset=["clase"])
 
 
 # --------------------------------------------------------------------------
@@ -105,14 +109,21 @@ def leer_vectores(carpeta, fuente):
 capas = []
 try:
     from huggingface_hub import snapshot_download
-    snapshot_download(repo_id="hotosm/venezuela_eq_2026", repo_type="dataset", local_dir=HF_DIR,
-                      allow_patterns=["*.geojson", "*.gpkg", "*.parquet", "*.fgb", "*.zip", "*.md", "*.csv"])
-    for z in glob.glob(f"{HF_DIR}/**/*.zip", recursive=True):
-        with zipfile.ZipFile(z) as zf:
-            zf.extractall(z[:-4])
-    capas += leer_vectores(HF_DIR, "HOTOSM (fAIr/Microsoft/OSU)")
+    patrones = [f"*{z}_damage_polygons.geojson" for z in ZONAS_HOT] + \
+               [f"*{z}_osu_damaged_polygons.geojson" for z in ZONAS_HOT] + ["*venezuela_validated_damage.geojson", "*.md"]
+    snapshot_download(repo_id="hotosm/venezuela_eq_2026", repo_type="dataset", local_dir=HF_DIR, allow_patterns=patrones)
 except Exception as e:
     print(f"[!] HOTOSM Hugging Face: {e}  ->  pip install huggingface_hub")
+for z in ZONAS_HOT:                                        # daño fusionado fAIr/Microsoft por edificio
+    for f in glob.glob(f"{HF_DIR}/**/{z}_damage_polygons.geojson", recursive=True)[:1]:
+        g = leer_vector(f, "HOTOSM", "damage", {"zona": z, "validado": False})
+        if g is not None:
+            capas.append(g)
+for f in glob.glob(f"{HF_DIR}/**/venezuela_validated_damage.geojson", recursive=True)[:1]:   # validado por personas
+    g = leer_vector(f, "HOTOSM validado/validated", "damaged", {"zona": "validado", "validado": True})
+    if g is not None:
+        capas.append(g)
+gc_ = __import__("gc"); gc_.collect()
 
 # --------------------------------------------------------------------------
 # 2. Copernicus EMS EMSR884 (automático si es posible; si no, manual en cems/)
@@ -125,21 +136,28 @@ for z in glob.glob(f"{CEMS_DIR}/**/*.zip", recursive=True):
     if not os.path.isdir(z[:-4]):
         with zipfile.ZipFile(z) as zf:
             zf.extractall(z[:-4])
-capas += leer_vectores(CEMS_DIR, "Copernicus EMS EMSR884")
+for f in glob.glob(f"{CEMS_DIR}/**/*.shp", recursive=True):
+    if "built" in os.path.basename(f).lower() or "grading" in f.lower():       # capas de edificios graduados
+        g = leer_vector(f, "Copernicus EMS EMSR884", None, {"zona": "cems", "validado": False})
+        if g is not None:
+            capas.append(g)
 
 if not capas:
     raise SystemExit("No hay capas de daño todavía / no damage layers yet (ver mensajes arriba / see messages above).")
 
 danio = gpd.GeoDataFrame(pd.concat(capas, ignore_index=True), crs=4326)
+del capas
 danio.to_file(GPKG, layer="edificios_danio", driver="GPKG")
 resumen = danio.groupby(["fuente", "clase"]).size().unstack(fill_value=0)
+print("\nControl: valores originales → clase / original values → class")
+print(danio.groupby(["valor_original", "clase"]).size().sort_values(ascending=False).head(15).to_string())
 print("\n=== Edificios por clase / buildings per class ===\n" + resumen.to_string())
 csv_bilingue(resumen, f"{OUT}/resumen_clases_danio.csv", index=True)
 
 # --------------------------------------------------------------------------
 # 3. Zonas de contraste por sitio / contrast zones per site
 # --------------------------------------------------------------------------
-d_utm = danio.to_crs(CRS)
+d_utm = danio[~danio.validado.fillna(False).astype(bool)].to_crs(CRS)
 d_utm["c"] = d_utm.geometry.centroid
 # zona válida = Umbra ∩ Planet (si existen los inventarios) / valid zone = Umbra ∩ Planet
 zona_valida = None
@@ -170,6 +188,7 @@ for sitio, (lat, lon) in SITIOS.items():
     if D.empty or U.empty:
         print(f"[–] {sitio}: sin dañados y no dañados suficientes / not enough damaged and undamaged buildings")
         continue
+    D = D.iloc[:3000]; U = U.iloc[:4000]                    # límite de memoria / memory cap
     xy_d = np.c_[D.c.x, D.c.y]; xy_u = np.c_[U.c.x, U.c.y]; xy_all_d = xy_d
     # zona dañada: centro con más edificios destruidos/dañados en 100 m (peso 2 a destruidos)
     peso = np.where(D.clase.values == "destruido", 2, 1)

@@ -133,6 +133,15 @@ def paso(pid, correr, raiz, version="", forzar=False, confirmar=False, variables
         estado_final, origen = "error", f"{type(e).__name__}: {str(e)[:120]}"
         raise
     finally:
+        # defensa: si un script pisó la función P() del cuaderno, se restaura / safeguard: restore P() if a script overwrote it
+        try:
+            from IPython import get_ipython
+            _ns = get_ipython().user_ns
+            if not callable(_ns.get("P")):
+                _ns["P"] = lambda _pid, **kw: paso(_pid, correr, raiz, version, **kw)
+                print("   (P() restaurada / restored)")
+        except Exception:
+            pass
         os.makedirs(os.path.dirname(_ruta(raiz)), exist_ok=True)
         fila = pd.DataFrame([dict(id=pid, fecha=datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), version=version,
                                   estado=estado_final, origen=origen or f"{script} md5:{_md5(script)}")])

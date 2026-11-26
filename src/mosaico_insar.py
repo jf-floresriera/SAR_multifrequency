@@ -110,13 +110,13 @@ for fam, carpeta, patron in (("NISAR", "nisar", "NISAR_T*_los_m.tif"), ("Sentine
         familia = ("ALOS-2 (UCSD)" if "ALOS2" in nombre else "NISAR (UCSD)") if fam == "UCSD" else fam
         prods.append(dict(nombre=nombre, fam=familia, dir=direc, track=track, pref=pref, ruta=iono if os.path.exists(iono) else f,
                           ref=fechas[0], sec=fechas[-1]))
-P = pd.DataFrame(prods)
-if P.empty:
+PROD = pd.DataFrame(prods)       # NO llamar P: pisaba la función P() del cuaderno / must not be named P: it clobbered the notebook's P()
+if PROD.empty:
     raise SystemExit("Sin productos en 02_procesados / no products")
 
 filas = []
 resumen = {}
-for (fam_, direc), G in P.groupby(["fam", "dir"]):
+for (fam_, direc), G in PROD.groupby(["fam", "dir"]):
     datos = []
     for _, p in G.iterrows():
         los = a_ll(p.ruta) * ESC

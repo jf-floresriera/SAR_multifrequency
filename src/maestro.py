@@ -37,7 +37,7 @@ PASOS = [
     ("exportar",    "E Salida",     "exportar_figuras_github.py",   "Preparar figuras para GitHub (sin Planet/Esri)",     "Prepare figures for GitHub (no Planet/Esri)"),
 ]
 IDS = [p[0] for p in PASOS]
-SIEMPRE = {"hyp3_estado", "descargas", "exportar"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
+SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "insar_metricas"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
 
 # Hecho ANTES de este cuaderno (19-nov-2026), con la evidencia encontrada en Drive. Es evidencia de que el paso
 # se ejecutó, no una verificación del contenido de sus salidas. / Done BEFORE this notebook, with Drive evidence.

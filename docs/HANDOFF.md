@@ -34,6 +34,10 @@
 ### 0.35 Plan de figuras/tablas/estadísticas
 Ver [`FIGURAS_TABLAS_ESTADO.md`](FIGURAS_TABLAS_ESTADO.md): lo propuesto al inicio con su estado. **Nuevo:** LOS en mm, paleta bam/bamO (no la de UCSD), QC por interferograma (`qc`).
 
+### 0.36 Regla para actualizar el cuaderno / Notebook update rule
+🇪🇸 Cada vez que se añada o cambie una **celda** de `notebooks/00_Maestro.ipynb`, subir el número de `CUADERNO_VERSION` (primera celda) **y** de `notebooks/VERSION_CUADERNO.txt`: la primera celda compara ambos y avisa al autor si su copia en Drive está vieja y muestra los commits nuevos de GitHub. Cambios en `src/*.py` no necesitan nada: se bajan con el `git pull` de esa celda.
+🇬🇧 Whenever a **cell** of the master notebook is added/changed, bump `CUADERNO_VERSION` (first cell) **and** `notebooks/VERSION_CUADERNO.txt`; the first cell compares them, warns if the author's Drive copy is stale and lists new commits. Changes in `src/*.py` need nothing: the pull downloads them.
+
 ### 0.4 Orden de las celdas del maestro tras `git pull` (primera celda) / Cell order
 `mapas_base` (forzar) → `vantor` → `nisar_tif` (forzar) → `descomp` (forzar) → `auditoria` → `ucsd_los` → `insar_metricas` → luego figuras del suplemento. Las copias del cuaderno en Drive **no se actualizan solas**: el autor debe copiar celdas nuevas o abrir desde GitHub.
 

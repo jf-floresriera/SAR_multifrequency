@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-MOSAICO de frames / tracks adyacentes de NISAR (misma dirección de órbita) · mosaic of adjacent NISAR frames/tracks
+MOSAICO de frames / tracks adyacentes (MISMA familia de sensor y MISMA dirección de órbita) · mosaic of adjacent frames/tracks
 ================================================================================================================
 ¿Se puede unir? Sí, con cuidado: UCSD/Scripps muestra T162A + T061A (ascendentes) y T054D + T126D (descendentes) como un solo mapa
 (https://topex.ucsd.edu/VNZ_7.5/index.html) y el apilado de frames adyacentes es práctica estándar (ISCE, ARIA). Pero cada producto desenvuelto tiene
@@ -78,25 +78,45 @@ try:
 except Exception as e:
     print("[!] sin capa de fallas: no habrá referencia de campo lejano / no faults layer:", e)
 
-# ------------------------------------------------------------------ inventario de productos NISAR por dirección
+# ------------------------------------------------------------------ inventario por (familia, dirección)
+# Regla: se unen SOLO productos de la MISMA familia (sensor/banda) y la MISMA dirección de órbita. Nunca entre sensores: C y L se COMPARAN, no se mezclan.
+# Rule: only products of the SAME family (sensor/band) and SAME orbit direction are merged. Never across sensors: C vs L are COMPARED, not mixed.
 prods = []
-for f in sorted(glob.glob(f"{RAIZ}/02_procesados/nisar/NISAR_T*_los_m.tif")):
-    pref = f[:-len("_los_m.tif")]
-    nombre = os.path.basename(pref)
-    tr_ = re.search(r"_T(\d{3})([AD])_", nombre)
-    fechas = re.findall(r"(20\d{6})", nombre)
-    if not tr_ or len(fechas) < 2:
-        continue
-    iono = pref + "_los_iono_m.tif"
-    prods.append(dict(nombre=nombre, dir="ASC" if tr_.group(2) == "A" else "DESC", track=tr_.group(1) + tr_.group(2), pref=pref,
-                      ruta=iono if os.path.exists(iono) else f, ref=fechas[0], sec=fechas[-1]))
+
+
+def _dir_por_mirada(pref):
+    """Sentinel-1 no trae el track en el nombre: la dirección sale del signo del vector de mirada Este (suelo→satélite: ASC < 0, DESC > 0)."""
+    e = a_ll(pref + "_losE.tif")
+    return None if not np.isfinite(e).any() else ("ASC" if np.nanmean(e) < 0 else "DESC")
+
+
+for fam, carpeta, patron in (("NISAR", "nisar", "NISAR_T*_los_m.tif"), ("Sentinel-1", "sentinel1", "S1_*_los_m.tif"),
+                             ("UCSD", "ucsd", "UCSD_*_los_m.tif")):
+    for f in sorted(glob.glob(f"{RAIZ}/02_procesados/{carpeta}/{patron}")):
+        pref = f[:-len("_los_m.tif")]
+        nombre = os.path.basename(pref)
+        fechas = re.findall(r"(20\d{6})", nombre)
+        if len(fechas) < 2:
+            continue
+        tr_ = re.search(r"_T(\d{3})([AD])_", nombre)
+        if tr_:
+            direc, track = ("ASC" if tr_.group(2) == "A" else "DESC"), tr_.group(1) + tr_.group(2)
+        else:
+            direc, track = _dir_por_mirada(pref), ""
+        if direc is None:
+            print(f"[!] {nombre}: sin vector de mirada, no se sabe si es ASC o DESC / no look vector")
+            continue
+        iono = pref + "_los_iono_m.tif"
+        familia = ("ALOS-2 (UCSD)" if "ALOS2" in nombre else "NISAR (UCSD)") if fam == "UCSD" else fam
+        prods.append(dict(nombre=nombre, fam=familia, dir=direc, track=track, pref=pref, ruta=iono if os.path.exists(iono) else f,
+                          ref=fechas[0], sec=fechas[-1]))
 P = pd.DataFrame(prods)
 if P.empty:
-    raise SystemExit("Sin productos NISAR en 02_procesados/nisar / no NISAR products")
+    raise SystemExit("Sin productos en 02_procesados / no products")
 
 filas = []
 resumen = {}
-for direc, G in P.groupby("dir"):
+for (fam_, direc), G in P.groupby(["fam", "dir"]):
     datos = []
     for _, p in G.iterrows():
         los = a_ll(p.ruta) * ESC
@@ -105,7 +125,12 @@ for direc, G in P.groupby("dir"):
             los = np.where(coh >= COH_MIN, los, np.nan)
         datos.append(dict(p=p, los=los, coh=coh))
     datos.sort(key=lambda d: -np.isfinite(d["los"]).sum())          # ancla = mayor cobertura
-    print(f"\n== {direc}: {[d['p'].nombre for d in datos]}")
+    print(f"\n== {fam_} {direc}: {[d['p'].nombre for d in datos]}")
+    if len(datos) < 2:
+        print("   (un solo producto: no hay vecino que unir / single product: nothing to merge)")
+    for d_ in datos:
+        if not np.isfinite(d_["coh"]).any():          # UCSD no trae coherencia: se trata como 1 donde hay dato
+            d_["coh"] = np.where(np.isfinite(d_["los"]), 1.0, np.nan).astype("float32")
     mos = datos[0]["los"].copy(); cohm = np.where(np.isfinite(datos[0]["los"]), datos[0]["coh"], -1.0)
     fuente = np.where(np.isfinite(mos), 0, -1)
     # el ancla también se referencia al campo lejano si es posible
@@ -113,7 +138,7 @@ for direc, G in P.groupby("dir"):
         off0 = float(np.nanmedian(mos[np.isfinite(mos) & (DIST > KM_FALLA)])); mos = mos - off0
     else:
         off0 = 0.0
-    filas.append(dict(direccion=direc, producto=datos[0]["p"].nombre, rol="ancla", solape_pix=0, desfase_aplicado_mm=round(off0, 1),
+    filas.append(dict(familia=fam_, direccion=direc, producto=datos[0]["p"].nombre, rol="ancla", solape_pix=0, desfase_aplicado_mm=round(off0, 1),
                       rms_solape_mm=np.nan, mad_solape_mm=np.nan, metodo="campo lejano" if off0 else "sin cambio"))
     for k, d in enumerate(datos[1:], start=1):
         los, coh, nom = d["los"], d["coh"], d["p"].nombre
@@ -131,20 +156,22 @@ for direc, G in P.groupby("dir"):
             rms = float(np.sqrt(np.mean(dif ** 2))); mad = float(1.4826 * np.median(np.abs(dif - np.median(dif))))
         else:
             rms = mad = np.nan
-        filas.append(dict(direccion=direc, producto=nom, rol="añadido", solape_pix=int(ov.sum()), desfase_aplicado_mm=round(off, 1),
+        filas.append(dict(familia=fam_, direccion=direc, producto=nom, rol="añadido", solape_pix=int(ov.sum()), desfase_aplicado_mm=round(off, 1),
                           rms_solape_mm=round(rms, 1) if np.isfinite(rms) else np.nan, mad_solape_mm=round(mad, 1) if np.isfinite(mad) else np.nan, metodo=metodo))
         print(f"   {nom}: solape {int(ov.sum()):,} px · desfase {off:+.0f} mm ({metodo}) · RMS solape {rms:.0f} mm")
         mejor = np.isfinite(los) & (~np.isfinite(mos) | (coh > cohm))
         mos = np.where(mejor, los, mos); cohm = np.where(mejor, coh, cohm); fuente = np.where(mejor, k, fuente)
     f0 = min(d["p"].ref for d in datos); f1 = max(d["p"].sec for d in datos)
-    base = f"NISAR_MOSAICO_{direc}_{f0}_{f1}"
+    slug = {"NISAR": "NISAR", "Sentinel-1": "S1", "ALOS-2 (UCSD)": "ALOS2UCSD", "NISAR (UCSD)": "NISARUCSD"}[fam_]
+    base = f"{slug}_MOSAICO_{direc}_{f0}_{f1}"
     escribir(np.where(np.isfinite(mos), mos / ESC, np.nan), f"{OUT}/{base}_los_m.tif")
     escribir(np.where(cohm >= 0, cohm, np.nan), f"{OUT}/{base}_coh.tif")
-    resumen[direc] = (mos, fuente, [d["p"].nombre for d in datos], base)
+    if len(datos) >= 2:
+        resumen[(fam_, direc)] = (mos, fuente, [d["p"].nombre for d in datos], base)
 
 M = pd.DataFrame(filas)
 M.to_csv(f"{OUT}/mosaico_costuras_es.csv", index=False)
-M.rename(columns={"direccion": "direction", "producto": "product", "rol": "role", "solape_pix": "overlap_px", "desfase_aplicado_mm": "applied_offset_mm",
+M.rename(columns={"familia": "family", "direccion": "direction", "producto": "product", "rol": "role", "solape_pix": "overlap_px", "desfase_aplicado_mm": "applied_offset_mm",
                   "rms_solape_mm": "overlap_rms_mm", "mad_solape_mm": "overlap_mad_mm", "metodo": "method"}).to_csv(f"{OUT}/mosaico_costuras_en.csv", index=False)
 pd.set_option("display.width", 220)
 print("\n=== COSTURAS / SEAMS ===")
@@ -154,14 +181,16 @@ print(M.to_string(index=False))
 for idioma in ("es", "en"):
     aplicar_estilo(7)
     n = len(resumen)
+    if n == 0:
+        break
     fig, axs = plt.subplots(n, 2, figsize=(180 / 25.4, (36 * n + 14) / 25.4), squeeze=False)
-    for i, (direc, (mos, fuente, nombres, base)) in enumerate(resumen.items()):
+    for i, ((fam_, direc), (mos, fuente, nombres, base)) in enumerate(resumen.items()):
         v = mos[np.isfinite(mos)]
         lim = max(float(np.percentile(np.abs(v), 99)) if v.size else 100.0, 20.0)
         ext = [WIN[0], WIN[1], WIN[2], WIN[3]]
         im = axs[i, 0].imshow(mos, extent=ext, cmap=CMAPS["divergente"], vmin=-lim, vmax=lim, interpolation="nearest")
         cb = fig.colorbar(im, ax=axs[i, 0], pad=0.01, fraction=0.03); cb.ax.tick_params(labelsize=6, length=2)
-        axs[i, 0].set_title(f"{direc} · {T('mo_a', idioma)}", fontsize=6.5, loc="left", pad=2)
+        axs[i, 0].set_title(f"{fam_} {direc} · {T('mo_a', idioma)}", fontsize=6.5, loc="left", pad=2)
         axs[i, 1].imshow(np.where(fuente >= 0, fuente, np.nan), extent=ext, cmap="tab10", vmin=0, vmax=9, interpolation="nearest")
         axs[i, 1].set_title(T("mo_b", idioma) + ": " + "; ".join(f"{k}={n_[6:].split('_20')[0]}" for k, n_ in enumerate(nombres)), fontsize=5.6, loc="left", pad=2)
         for ax in axs[i]:

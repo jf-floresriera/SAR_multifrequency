@@ -41,6 +41,10 @@ Ver [`FIGURAS_TABLAS_ESTADO.md`](FIGURAS_TABLAS_ESTADO.md): lo propuesto al inic
 ### 0.37 ⚠️ Hallazgo crítico (26-nov, noche): los frames de NISAR se sobrescribían
 `resumen_nisar.json` (Drive, `02_procesados/nisar/`) lista **6 GUNW para 4 tracks**: T162A frames 006+007, T126D frames 083+084, T054D 083, T061A 007 (esta en EPSG:32620). Como el nombre corto era `NISAR_T<track>_<ref>_<sec>` **sin frame, el segundo frame sobrescribía al primero** → solo se analizaba la mitad de cada track (explica parte de la baja cobertura y el 126D vacío). **Corregido** en `nisar_gunw_a_geotiff.py` (`NISAR_T<track>_F<frame>_<ref>_<sec>`; los archivos viejos se mueven a `_obsoletos_sin_frame/`); `insar_metricas`/`ucsd_los` unen los frames al comparar. Tras el `git pull` el paso `nisar_tif` se repite solo (md5). Pendiente: un frame que cae entero en la zona de deformación no tiene campo lejano para referenciar (el QC lo avisa).
 
+### 0.38 Regla de mosaicos / Mosaic rule
+🇪🇸 `src/mosaico_insar.py` (paso `mosaico`) une **solo** productos de la **misma familia (sensor/banda) y la misma dirección** de órbita (NISAR ASC/DESC, Sentinel-1 ASC/DESC, ALOS-2 y NISAR de UCSD), igualando el desfase en el solape y midiendo la costura (RMS). **Nunca entre sensores**: C y L se comparan, no se mezclan. Este/Vertical usa los productos separados. Precedente: UCSD une S1 T106A+T033A, NISAR T162A+T061A, T054D+T126D (con costura visible). **Falta T106A de Sentinel-1** (cubre el oeste, el Mw 7,2): sería 1 trabajo HyP3 nuevo; solo si se quiere comparar toda la ruptura (el foco del artículo es La Guaira).
+🇬🇧 Merge only same-family, same-direction products; never across sensors; East/Up uses separate products. S-1 T106A is missing (west, Mw 7.2): one new HyP3 job, only if rupture-wide comparison is wanted.
+
 ### 0.4 Orden de las celdas del maestro tras `git pull` (primera celda) / Cell order
 `mapas_base` (forzar) → `vantor` → `nisar_tif` (forzar) → `descomp` (forzar) → `auditoria` → `ucsd_los` → `insar_metricas` → luego figuras del suplemento. Las copias del cuaderno en Drive **no se actualizan solas**: el autor debe copiar celdas nuevas o abrir desde GitHub.
 

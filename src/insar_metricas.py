@@ -71,7 +71,8 @@ for banda, origen, carpeta in (("C", "Sentinel-1", "sentinel1"), ("L", "NISAR", 
         if origen == "UCSD":
             sensor = "ALOS-2 (UCSD)" if "ALOS2" in nombre else "NISAR (UCSD)"
         elif origen == "MOSAICO":
-            sensor = "NISAR mosaico"
+            sensor = ("ALOS-2 (UCSD) mosaico" if nombre.startswith("ALOS2UCSD") else "NISAR (UCSD) mosaico" if nombre.startswith("NISARUCSD")
+                      else "Sentinel-1 mosaico" if nombre.startswith("S1") else "NISAR mosaico")
             track = "ASC" if "_ASC_" in nombre else "DESC"
         los_f = f
         if origen in ("NISAR",) and USAR_IONO and os.path.exists(pref + "_los_iono_m.tif"):

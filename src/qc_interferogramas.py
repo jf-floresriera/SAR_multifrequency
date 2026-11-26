@@ -118,7 +118,18 @@ for sensor, nombre, pref, ruta, iono in prods:
         dx.append("NISAR SIN ionosfera restada")
     if np.isfinite(cob_coh) and cob_coh < 30:
         dx.append(f"solo {cob_coh:.0f} % de los píxeles supera coh ≥ {COH_MIN}")
-    filas.append(dict(producto=nombre, sensor=sensor, ionosfera_restada=bool(iono), offset_referencia_mm=round(off, 1),
+    # barrido del umbral de coherencia: cobertura vs ruido en campo lejano / coherence-threshold sweep: coverage vs far-field noise
+    barrido = {}
+    if np.isfinite(coh).any():
+        for u in (0.1, 0.2, 0.3, 0.4):
+            mu = np.isfinite(los_raw) & (coh >= u)
+            barrido[f"cobertura_coh{u}_pct"] = round(100 * float(mu.mean()), 1)
+            lj = mu & (DIST > KM_FALLA) if DIST is not None else None
+            if lj is not None and lj.sum() > 500:
+                z = los_raw[lj] - np.nanmedian(los_raw[lj])
+                barrido[f"ruido_coh{u}_mm"] = round(float(1.4826 * np.nanmedian(np.abs(z))), 1)
+        print("   barrido de coherencia / sweep:", {k: v for k, v in barrido.items()})
+    filas.append(dict(**barrido, producto=nombre, sensor=sensor, ionosfera_restada=bool(iono), offset_referencia_mm=round(off, 1),
                       cobertura_pct=round(100 * float(v.mean()), 1), pct_coh_sobre_umbral=round(cob_coh, 1),
                       los_p2_mm=round(float(p2), 1), los_p98_mm=round(float(p98), 1), max_abs_mm=round(maxabs, 0),
                       fase_p2_rad=round(float(np.nanpercentile(rad, 2)), 1), fase_p98_rad=round(float(np.nanpercentile(rad, 98)), 1),
@@ -166,7 +177,7 @@ for sensor, nombre, pref, ruta, iono in prods:
                            f"≈{fr:.1f} {'franjas' if idioma == 'es' else 'fringes'}", transform=h.transAxes, ha="right", va="top", fontsize=6)
         for ax, l in zip(axs.flat, "abcdef"):
             etiqueta_panel(ax, l, dx=-0.12, dy=1.0)
-        fig.suptitle(f"{nombre}" + (" · ion ✓" if iono else ""), fontsize=6.5, x=0.01, ha="left", y=0.995)
+        fig.suptitle(f"{nombre}" + (" · ion OK" if iono else " · sin ion."), fontsize=6.5, x=0.01, ha="left", y=0.995)
         fig.subplots_adjust(left=0.07, right=0.98, top=0.93, bottom=0.06, hspace=0.42, wspace=0.22)
         exportar(fig, f"qc_{nombre}_{idioma}", FIG, formatos=("pdf", "png"))
         plt.close(fig)

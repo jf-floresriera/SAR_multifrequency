@@ -45,6 +45,12 @@ Ver [`FIGURAS_TABLAS_ESTADO.md`](FIGURAS_TABLAS_ESTADO.md): lo propuesto al inic
 🇪🇸 `src/mosaico_insar.py` (paso `mosaico`) une **solo** productos de la **misma familia (sensor/banda) y la misma dirección** de órbita (NISAR ASC/DESC, Sentinel-1 ASC/DESC, ALOS-2 y NISAR de UCSD), igualando el desfase en el solape y midiendo la costura (RMS). **Nunca entre sensores**: C y L se comparan, no se mezclan. Este/Vertical usa los productos separados. Precedente: UCSD une S1 T106A+T033A, NISAR T162A+T061A, T054D+T126D (con costura visible). **Falta T106A de Sentinel-1** (cubre el oeste, el Mw 7,2): sería 1 trabajo HyP3 nuevo; solo si se quiere comparar toda la ruptura (el foco del artículo es La Guaira).
 🇬🇧 Merge only same-family, same-direction products; never across sensors; East/Up uses separate products. S-1 T106A is missing (west, Mw 7.2): one new HyP3 job, only if rupture-wide comparison is wanted.
 
+### 0.39 Resultados de la corrida completa del 26-nov (leídos de Drive) y plan principal/suplemento
+- **Hipótesis del mar confirmada:** 42–53 % de cada huella es mar (incoherente). Coherencia ≥ 0,3 **sobre tierra**: NISAR 162A 73 %, 054D 54 %, 061A 47 %, 126D 48 %; Sentinel-1 033A 20 %, 025D 38 % (C se decorrela más). La cobertura «global» de 10–27 % era engañosa.
+- **GUNW de NISAR (auditoría):** trae capa de ionosfera (+incertidumbre), fase de marea terrestre (`slantRangeSolidEarthTidesPhase`) y **banderas** `hydrostatic/wetTroposphericCorrectionApplied` (leer su valor con `auditoria` → sección «BANDERAS»; sin confirmar si ya vienen aplicadas).
+- **Corr. propio vs UCSD (ucsd_resumen):** 061A 0,94 · 054D 0,64 · 162A 0,48 · 126D 0,43 (anteriores a la corrección de frames: repetir `nisar_tif`).
+- **Plan de figuras:** PRINCIPAL = `comparacion` (6–8 paneles: familia × ASC/DESC, misma escala) + Este/Vertical + perfil común + tabla de métricas. SUPLEMENTO = QC por producto, frames/tracks individuales, costuras del mosaico, propio vs UCSD, mapas de cobertura. Mapas «casi vacíos» = productos individuales o ventanas que no coinciden con su huella: no van en el texto principal.
+
 ### 0.4 Orden de las celdas del maestro tras `git pull` (primera celda) / Cell order
 `mapas_base` (forzar) → `vantor` → `nisar_tif` (forzar) → `descomp` (forzar) → `auditoria` → `ucsd_los` → `insar_metricas` → luego figuras del suplemento. Las copias del cuaderno en Drive **no se actualizan solas**: el autor debe copiar celdas nuevas o abrir desde GitHub.
 

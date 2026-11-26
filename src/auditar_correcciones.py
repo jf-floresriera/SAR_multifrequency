@@ -47,6 +47,20 @@ for d in NISAR_DIRS:
                         if k in n.replace("_", ""):
                             enc.setdefault(v, []).append(nombre.split("/", 3)[-1] if nombre.count("/") > 3 else nombre)
             h.visititems(_v)
+            # banderas «...Applied»: ¿el GUNW ya aplicó troposfera / mareas? (valor real leído del archivo) / flags: real values read from the file
+            banderas = {}
+
+            def _b(nombre, obj):
+                if isinstance(obj, h5py.Dataset) and "applied" in nombre.lower():
+                    try:
+                        val = obj[()]
+                        val = val.decode() if isinstance(val, bytes) else val
+                        banderas[nombre.split("/")[-1]] = str(val)
+                    except Exception:
+                        pass
+            h.visititems(_b)
+        for nom_b, val_b in sorted(banderas.items()):
+            filas.append(dict(producto=base[:60], sensor="NISAR GUNW", capa_o_correccion="BANDERA " + nom_b, presente=val_b, n=1, ejemplo=""))
         for v, rutas in sorted(enc.items()):
             filas.append(dict(producto=base[:60], sensor="NISAR GUNW", capa_o_correccion=v, presente="sí", n=len(rutas), ejemplo=rutas[0][:90]))
         for v in ("ionosfera", "troposfera húmeda", "troposfera hidrostática", "marea terrestre"):
@@ -89,4 +103,8 @@ if A.empty:
 else:
     pd.set_option("display.width", 220, "display.max_colwidth", 70)
     print(A.drop_duplicates(["sensor", "capa_o_correccion", "presente"])[["sensor", "capa_o_correccion", "presente", "ejemplo"]].to_string(index=False))
+    b_ = A[A.capa_o_correccion.str.startswith("BANDERA")]
+    if len(b_):
+        print("\n=== BANDERAS «Applied» (valor leído del GUNW) ===")
+        print(b_.drop_duplicates(["capa_o_correccion", "presente"])[["capa_o_correccion", "presente"]].to_string(index=False))
     print("\nLectura / reading: 'NO ENCONTRADA' = esa corrección NO viene en el archivo y habría que aplicarla aparte (ver docs/CORRECCIONES_INSAR.md).")

@@ -31,6 +31,7 @@ PASOS = [
     ("auditoria",   "C InSAR",      "auditar_correcciones.py",      "Auditoría: qué correcciones traen los productos",    "Audit: which corrections the products carry"),
     ("qc",          "C InSAR",      "qc_interferogramas.py",        "QC por interferograma: franjas, coherencia, ruido, diagnóstico", "Per-interferogram QC: fringes, coherence, noise, diagnosis"),
     ("mosaico",     "C InSAR",      "mosaico_insar.py",             "Mosaico de frames/tracks NISAR vecinos (desfase igualado en el solape)", "Mosaic of adjacent NISAR frames/tracks (offset matched in overlap)"),
+    ("comparacion", "C InSAR",      "comparacion_modelos.py",       "Figura de comparación de TODOS los modelos (misma ventana y escala)", "Comparison figure of ALL models (same window and scale)"),
     ("insar_metricas", "C InSAR",   "insar_metricas.py",            "Métricas y mapas/perfil COMPARABLES (misma escala y ventana)", "COMPARABLE metrics, maps and profile (same scale and window)"),
     ("danio_ref",   "D Daño",       "danio_referencia.py",          "Daño de referencia HOTOSM + Copernicus EMS",         "Reference damage HOTOSM + Copernicus EMS"),
     ("vantor",      "D Daño",       "vantor_buscar.py",             "Óptico ~0,4 m ANTES/DESPUÉS (Vantor abierto) por sitio",  "~0.4 m optical PRE/POST (Vantor open data) per site"),
@@ -38,7 +39,7 @@ PASOS = [
     ("exportar",    "E Salida",     "exportar_figuras_github.py",   "Preparar figuras para GitHub (sin Planet/Esri)",     "Prepare figures for GitHub (no Planet/Esri)"),
 ]
 IDS = [p[0] for p in PASOS]
-SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "mosaico", "insar_metricas"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
+SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "mosaico", "comparacion", "insar_metricas"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
 
 # Hecho ANTES de este cuaderno (19-nov-2026), con la evidencia encontrada en Drive. Es evidencia de que el paso
 # se ejecutó, no una verificación del contenido de sus salidas. / Done BEFORE this notebook, with Drive evidence.

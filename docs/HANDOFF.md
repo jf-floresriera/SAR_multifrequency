@@ -55,3 +55,49 @@ Todas tienen título interno, rótulos A/B/1/2 en vez de (a)(b), paleta jet, mos
 - **Nunca** escribir credenciales de Earthdata en celdas: usar *Secretos* de Colab o `.netrc`. Las salidas guardadas de un cuaderno antiguo contienen el nombre de usuario; limpiar salidas antes de compartir cuadernos.
 - No subir datos pesados ni imágenes con licencia restrictiva (`.gitignore` ya excluye `*.tif`, `*.h5`, `*.zip`).
 - Entorno: usar un `venv`/conda propio; no modificar el entorno global.
+
+
+---
+
+# 🇬🇧 English version / Versión en inglés
+
+## 1. Golden rule: do not redo work
+- A HyP3 job is identified by **scene pair + resolution**, not by name (`src/registro_datos.py`, used by `s1_pares_hyp3.py`). Before: 025D was submitted 4 times and 033A (different name) would have been resubmitted.
+- Decision order: (1) is the ZIP already on Drive? skip; (2) is there a valid job for the same pair and resolution? reuse; (3) only then submit. `FORZAR_ENVIO = True` repeats on purpose.
+- HyP3 products **expire after ~14 days**: always download them to Drive (`hyp3_estado.py`).
+
+## 2. What exists today (Drive: `InSAR_LaGuaira_Resultados/`)
+- **Sentinel-1 025D**, 40 m (INT40), 18→25 Jun: downloaded, **3 identical copies** (keep 1; ~2.2 GB redundant). Folder `GUAIRA-SAR/01_datos_crudos/sentinel1_hyp3/`.
+- **Sentinel-1 033A** (job `Sismo_LaGuaira_S1_Path33`), **80 m** (INT80), 18→25 Jun: downloaded, 2 copies.
+- **033A at 40 m: does not exist.** Recommended: submit ONE job (consistency with 025D and urban-scale analysis).
+- **NISAR GUNW 061A, 162A, 126D** coseismic (2.3 GB each): downloaded (`inventario_2026/datos_nisar_vargas/`; `descargas.py` copies them to `nisar_gunw/`). 054D is not needed (0 % coverage of La Guaira).
+- NISAR / Umbra / Planet inventory CSVs: done. Umbra × Planet v2 figures (6 sites, ES/EN): exist but are **not publishable**. Umbra GEC: not downloaded. **ALOS-2: never obtained or processed.** GNSS CCS1 coordinates: pending. `04_figuras/`: empty.
+- Author's Colab notebooks (saved outputs contain figures): `SAR_Multifrequency` (launcher), `VargaS_Earthquake` (original exploration, 5 Nov), `Inventario_Multisensor_Venezuela_2026` (19 Nov inventory).
+
+## 3. Scientific and quality findings
+- In `VargaS_Earthquake` the NISAR displacement (126D, ±20 rad) **shows no clear deformation pattern**: check ionosphere/reference before publishing. The S1 interferogram mixes "radians" and "cm" on one colour bar.
+- The S1 DEM-vs-displacement scatter gives R² = 0.25: **phase correlated with topography (atmosphere)**; correct it (phase–elevation regression or ERA5/GACOS).
+- Reference damage (HOTOSM fAIr/Microsoft) is **automatic**, hence label noise: cross-check with the validated subset.
+- Umbra covers only 3 of the 6 sites (Catia La Mar, Playa Grande, La Guaira).
+
+## 4. Figures: existing ones are NOT publishable as is
+All have an internal title, A/B/1/2 labels instead of (a)(b), jet palette, Esri tiles (restrictive licence), small text and Spanish only. **Redo** with `src/estilo_figuras.py` (see `ESTILO_FIGURAS.md`). Redo with existing data: timeline, coverage map without Esri, Umbra × Planet per site. Redo from products: S1/NISAR interferograms, fault-crossing profile, histogram. Keep the idea: DEM-displacement scatter (atmospheric diagnostic). Discard: 4-site mosaic with black panels, "critical zones" strip, viaduct figure. **Planet is CC BY-NC and Esri is restrictive: do not push those images to the repository.**
+
+## 5. ALOS-2: why pending and when to do it
+- Only `alos2_buscar.py` (an ASF search) exists. `VargaS_Earthquake` searched **ALOS-1 (ended 2011) → 0 scenes**, which is not ALOS-2.
+- JAXA released the earthquake ScanSAR on 3 Jul 2026; the ASF mirror lags. If ASF lacks it: JAXA portal, or **cite** the Scripps/UCSD ALOS-2 LOS products.
+- Processing needs GMTSAR or ISCE2 (burst ScanSAR, heavy). **When:** after (1) 033A at 40 m, (2) C and L East/Up from S1 + NISAR, (3) GNSS validation. **Proposed cut-off: 5 Dec 2026**; otherwise ALOS-2 goes to the supplement / future work.
+- Other sensors that could be added (**availability for this event NOT verified**): SAOCOM (L), TerraSAR-X/TanDEM-X and COSMO-SkyMed (X), ICEYE and Capella (X, open-data programmes), RADARSAT-2/RCM (C), ALOS-4 (L).
+
+## 6. Next work, in order
+1. Redo Fig. 2, Fig. 1 and Fig. 8 with `estilo_figuras.py`. 2. **Master notebook `notebooks/00_Maestro.ipynb`** (done): `git pull` → Drive → only missing steps → figures, ES/EN. 3. Submit 033A at 40 m and download. 4. GNSS CCS1. 5. C and L East/Up, L − C. 6. Statistics. 7. Figs. 6, 7, 9, 10 and Table 3. 8. Full manuscript (today ~400 words). 9. Zenodo and submission by 18 Dec.
+
+## 7. Security and licences
+- **Never** type Earthdata credentials into cells: use Colab *Secrets* or `.netrc`. Saved outputs of an old notebook contain the username; clear outputs before sharing notebooks.
+- Do not push heavy data or restrictively licensed imagery (`.gitignore` already excludes `*.tif`, `*.h5`, `*.zip`).
+- Use your own `venv`/conda; do not modify the global environment.
+- **Authorship:** commits must carry the author's identity only (`jf-floresriera`, GitHub no-reply address); do not add co-author trailers.
+
+## 8. Master notebook / Cuaderno maestro
+`notebooks/00_Maestro.ipynb` + `src/maestro.py`: one list of steps (`PASOS`); each runs once and is logged in `05_documentacion/pasos_ejecutados.csv` on Drive. Steps already done on 19 Nov are marked ✅ earlier (`HECHO_PREVIO`, with evidence). `P("id", forzar=True)` repeats a step; `hyp3_envio` is locked until `confirmar=True`.
+🇪🇸 Un solo cuaderno: cada paso corre una vez y queda registrado en Drive; los hechos el 19-nov figuran como previos; `hyp3_envio` queda bloqueado hasta `confirmar=True`.

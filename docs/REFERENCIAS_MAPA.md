@@ -38,3 +38,22 @@ Catia La Mar (10,6055; −67,0324) · Playa Grande/Urimare (10,6100; −67,0103)
 | GNSS | CCS1 y vecinas (NGL / IGVSB) | citado | *pendiente* |
 
 Contexto adicional que citar/consultar: el trabajo de Scripps/UCSD (`topex.ucsd.edu/VNZ_7.5`) como **referencia de estilo y de comparación**, no como base del análisis. El artículo de la BBC Mundo (`cpv38w3zg2ko`) **no pudo leerse** desde el entorno del asistente; si se usa, extraer manualmente fecha, cifras y zonas, y tratarlo como contexto periodístico, no como validación.
+
+
+---
+
+# 🇬🇧 English version / Versión en inglés
+
+So maps are not left empty: what to label and where to get it. Coordinates marked **approx.** must be verified against OSM/IGVSB before publication; the rest come from this repository.
+
+**Event.** USGS `us6000t7zc` (Mw 7.2) and `us6000t7zp` (Mw 7.5; ~10.622° N, 67.194° W); 24 Jun 2026 22:04:33 UTC (local = UTC − 4 h); principal fault San Sebastián (with Boconó in the multi-fault rupture, *The Seismic Record* 6(4) 2026).
+
+**Damage sites:** Catia La Mar (10.6055, −67.0324), Playa Grande/Urimare (10.6100, −67.0103), La Guaira (10.6000, −66.9331), Caraballeda (10.6122, −66.8519), Tanaguarena (10.6150, −66.8200), Naiguatá (10.6200, −66.7400). Umbra covers only the first three.
+
+**Suggested reference features (verify):** Caracas centre (~10.50° N, −66.91° W); Simón Bolívar airport, Maiquetía (~10.60° N, −66.99° W); La Guaira port (≈ La Guaira site); Viaduct No. 1 Caracas–La Guaira (**take from OSM**; no reliable coordinate here); Macuto (~10.61° N, −66.89° W); Valencia (~10.18° N, −68.00° W) and Puerto Cabello (~10.47° N, −68.01° W) for the west edge of the macro inset.
+
+**Planet areas of interest (real catalogue names):** `caracas`, `catia-la-mar`, `la-guaira`, `independencia-ocumare`, `puerto-cabello`, `valencia`, `yumare`.
+
+**Layers:** boundaries ADM0–ADM2 (geoBoundaries, CC BY 4.0) · active faults (GEM, CC BY-SA 4.0) · roads, ports, airports, coast (OSM, ODbL) · epicentres (USGS) — all via `mapas_base.py`. Pending: grey relief (SRTM/Copernicus DEM, check licence), land cover (ESA WorldCover, CC BY 4.0, Fig. 6), GNSS (CCS1 and neighbours, NGL/IGVSB).
+
+Additional context: the Scripps/UCSD work (`topex.ucsd.edu/VNZ_7.5`) is a **style and comparison reference**, not the basis of our analysis. The BBC Mundo article (`cpv38w3zg2ko`) **could not be read** from the assistant's environment; if used, extract date, figures and zones manually and treat it as journalistic context, not validation.

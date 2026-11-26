@@ -3,7 +3,7 @@
 > 🇪🇸 **Léase primero.** Este documento resume TODO el proyecto: objetivo, datos, método, decisiones, estado, reglas de la revista y plan del manuscrito. Está pensado para que cualquier persona (o asistente de IA) que abra el repositorio pueda continuar el trabajo sin el historial de conversaciones.
 > 🇬🇧 **Read first.** This document summarises the WHOLE project: goal, data, method, decisions, status, journal rules and manuscript plan, so that anyone (or any AI assistant) opening the repository can continue the work without the conversation history.
 
-Última actualización / Last update: 2026-11-19
+Última actualización / Last update: 2026-11-26 · **ver / see [`HANDOFF.md`](HANDOFF.md)** · cuaderno maestro / master notebook: `notebooks/00_Maestro.ipynb`
 
 ---
 
@@ -94,7 +94,7 @@ Lista oficial / official checklist: [`manuscrito/CHECKLIST_SRL.md`](../manuscrit
 | # | 🇪🇸 | 🇬🇧 | Fuente / source script |
 |---|---|---|---|
 | Fig. 1 | Mapa de ubicación: fallas, epicentros, sitios, cobertura de sensores | Location map | `mapas_base.py` |
-| Fig. 2 | Línea de tiempo de adquisiciones | Acquisition timeline | `inventario_multisensor.py` |
+| Fig. S1 (suplemento / supplement) | Línea de tiempo de adquisiciones (antes Fig. 2) + S2 huellas por sensor (S1, NISAR, ALOS-2, Umbra, Planet), Tabla S1 inventario completo, S3 los 6 sitios | Acquisition timeline (was Fig. 2) + S2 footprints per sensor, Table S1 full inventory, S3 all 6 sites — moved to the electronic supplement | `inventario_multisensor.py` |
 | Fig. 3 | LOS Sentinel-1 asc/desc | Sentinel-1 LOS | `descomposicion_C_L.py` |
 | Fig. 4 | LOS NISAR asc/desc (+ ALOS-2) | NISAR LOS | idem |
 | Fig. 5 | Este/Vertical C vs L y diferencia | East/Up C vs L | idem |

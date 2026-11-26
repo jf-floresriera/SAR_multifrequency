@@ -31,10 +31,15 @@ ANCHOS_MM = {"1col": 88, "1.5col": 130, "2col": 180}   # SRL: confirmar en las g
 OKABE_ITO = ["#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7"]
 CLASES_DANIO = {"no-damage": "#56B4E9", "minor-damage": "#F0E442", "major-damage": "#E69F00", "destroyed": "#D55E00"}
 
+def recortar(cmap, a=0.15, b=0.85, n=256):
+    """Recorta los extremos oscuros de una paleta (declarar en el pie: 'colormap truncated 15–85 %')."""
+    return ListedColormap(cmap(np.linspace(a, b, n)))
+
+
 try:
     from cmcrameri import cm as _cm
     CMAPS = {
-        "divergente": _cm.vik,       # deformación LOS, L − C, residuos (centro neutro en 0)
+        "divergente": recortar(_cm.vik),  # LOS, L − C, residuos (centro en 0); vik recortada 15–85 % = más clara / lighter
         "secuencial": _cm.batlow,    # coherencia, retrodispersión, elevación
         "ciclico": _cm.romaO,        # fase interferométrica envuelta
         "relieve": _cm.grayC,        # sombreado / mapa base tenue

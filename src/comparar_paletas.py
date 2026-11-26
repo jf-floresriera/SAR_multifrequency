@@ -33,3 +33,39 @@ def hoja(carpeta="."):
 
 if __name__ == "__main__":
     print(hoja(sys.argv[1] if len(sys.argv) > 1 else "."))
+
+
+# ---------------------------------------------------------------------------------------------
+# Hoja 2: candidatas CLARAS (extremos menos oscuros) / Sheet 2: LIGHT candidates
+# ---------------------------------------------------------------------------------------------
+def recortar(cmap, a=0.15, b=0.85, n=256):
+    """Recorta los extremos oscuros de una paleta (se declara en el pie: 'colormap truncated 15–85 %')."""
+    from matplotlib.colors import ListedColormap
+    return ListedColormap(cmap(np.linspace(a, b, n)))
+
+
+def hoja_claras(carpeta="."):
+    import matplotlib as mpl
+    from matplotlib.colors import ListedColormap
+    aplicar_estilo(7)
+    z = campo()
+    div = {"RdBu_r": mpl.colormaps["RdBu_r"], "BrBG": mpl.colormaps["BrBG"], "PuOr": mpl.colormaps["PuOr"],
+           "bam": cm.bam, "vik 15–85 %": recortar(cm.vik), "roma_r 15–85 %": recortar(cm.roma_r)}
+    sec = {"YlGnBu": mpl.colormaps["YlGnBu"], "cividis": mpl.colormaps["cividis"], "viridis": mpl.colormaps["viridis"],
+           "lajolla": cm.lajolla, "bamako": cm.bamako, "davos": cm.davos}
+    fig, axs = plt.subplots(4, 6, figsize=(180 * MM, 112 * MM), gridspec_kw=dict(hspace=0.55, wspace=0.08))
+    for fila, grupo in enumerate([div, sec]):
+        for j, (n, cmap) in enumerate(grupo.items()):
+            ax, ag = axs[2 * fila, j], axs[2 * fila + 1, j]
+            ax.imshow(z, cmap=cmap, vmin=-15, vmax=15); ax.set_title(n, fontsize=6.5, pad=2, fontweight="bold")
+            g = cmap(np.linspace(0, 1, 256))[:, :3]; lum = g @ np.array([0.299, 0.587, 0.114])
+            ag.imshow(z, cmap=ListedColormap(np.c_[lum, lum, lum]), vmin=-15, vmax=15)
+            ok, _ = prueba_gris(cmap)
+            ag.set_xlabel("gris monótono: " + ("sí" if ok else "no"), fontsize=5.5, labelpad=1)
+            for a_ in (ax, ag): a_.set_xticks([]); a_.set_yticks([])
+    axs[0, 0].set_ylabel("divergentes\ndiverging", fontsize=7); axs[2, 0].set_ylabel("secuenciales\nsequential", fontsize=7)
+    return exportar(fig, "paletas_claras", carpeta, formatos=("png", "pdf"))
+
+
+if __name__ == "__main__" and len(sys.argv) > 2 and sys.argv[2] == "claras":
+    print(hoja_claras(sys.argv[1]))

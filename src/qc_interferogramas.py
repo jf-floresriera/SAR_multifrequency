@@ -96,6 +96,12 @@ for sensor, carpeta in (("Sentinel-1", "sentinel1"), ("NISAR", "nisar")):
         pref = f[:-len("_los_m.tif")]
         iono = os.path.exists(pref + "_los_iono_m.tif") and sensor == "NISAR"
         prods.append((sensor, os.path.basename(pref), pref, pref + ("_los_iono_m.tif" if iono else "_los_m.tif"), iono))
+# --- MOSAICOS (salida del paso `mosaico`): también se les hace QC, porque son lo que se presenta / mosaics get QC too, they are what is shown
+for f in sorted(glob.glob(f"{RAIZ}/02_procesados/mosaicos/*_MOSAICO_*_los_m.tif")):
+    pref = f[:-len("_los_m.tif")]
+    nom = os.path.basename(pref)
+    sens = "Sentinel-1" if nom.startswith("S1_") else "NISAR"                # NISAR y ALOS-2: banda L (λ ≈ 23,8 cm)
+    prods.append((sens, nom, pref, f, nom.startswith(("NISAR_", "NISARUCSD_"))))     # NISAR propio y NISAR-UCSD llevan ionosfera corregida
 if not prods:
     raise SystemExit("Sin productos en 02_procesados: ejecute s1_tif / nisar_tif / no products found")
 
@@ -139,7 +145,9 @@ for sensor, nombre, pref, ruta, iono in prods:
         dx.append("hay valores atípicos enormes (¿errores de desenvolvimiento?): usar la máscara de componentes conexas")
     if fr < 1:
         dx.append("menos de 1 franja entre p2 y p98: para un Mw 7,5 se esperan decenas cerca de la falla")
-    if sensor == "NISAR" and not iono:
+    if "ALOS2" in nombre:
+        dx.append("ALOS-2 (UCSD) SIN corrección ionosférica (lo declaran los autores)")
+    elif sensor == "NISAR" and not iono:
         dx.append("NISAR SIN ionosfera restada")
     if tierra.get("huella_en_tierra_pct", 100) < 60:
         dx.append(f"{100 - tierra['huella_en_tierra_pct']:.0f} % de la huella es MAR (incoherente): la cobertura global subestima la de tierra "

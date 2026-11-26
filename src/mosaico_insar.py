@@ -47,7 +47,8 @@ os.makedirs(OUT, exist_ok=True); os.makedirs(FIG, exist_ok=True)
 n_x, n_y = int(round((WIN[1] - WIN[0]) / DEG)), int(round((WIN[3] - WIN[2]) / DEG))
 TR = from_origin(WIN[0], WIN[3], DEG, DEG)
 TXT.update({"mo_a": {"es": "Mosaico LOS (mm)", "en": "Mosaic LOS (mm)"}, "mo_b": {"es": "Producto que aporta cada píxel", "en": "Product supplying each pixel"},
-            "mo_c": {"es": "Diferencia en el solape (mm)", "en": "Difference in the overlap (mm)"}})
+            "mo_c": {"es": "Diferencia en el solape (mm)", "en": "Difference in the overlap (mm)"},
+            "mo_leyenda": {"es": "Color = producto que aporta el píxel", "en": "Colour = product supplying the pixel"}})
 
 
 def _corto(n_):
@@ -195,8 +196,15 @@ for idioma in ("es", "en"):
         im = axs[i, 0].imshow(mos, extent=ext, cmap=CMAPS["divergente"], vmin=-lim, vmax=lim, interpolation="nearest")
         cb = fig.colorbar(im, ax=axs[i, 0], pad=0.01, fraction=0.03); cb.ax.tick_params(labelsize=6, length=2)
         axs[i, 0].set_title(f"{fam_} {direc} · {T('mo_a', idioma)}", fontsize=6.5, loc="left", pad=2)
-        axs[i, 1].imshow(np.where(fuente >= 0, fuente, np.nan), extent=ext, cmap="tab10", vmin=0, vmax=9, interpolation="nearest")
-        axs[i, 1].set_title(T("mo_b", idioma) + ": " + "; ".join(str(k) + "=" + _corto(n_) for k, n_ in enumerate(nombres)), fontsize=5.6, loc="left", pad=2)
+        from matplotlib.colors import ListedColormap
+        from matplotlib.patches import Patch
+        paleta = ["#E69F00", "#56B4E9", "#009E73", "#D55E00", "#CC79A7", "#F0E442", "#0072B2", "#999999"]    # Okabe-Ito
+        axs[i, 1].imshow(np.where(fuente >= 0, fuente, np.nan), extent=ext, cmap=ListedColormap(paleta[:len(nombres)]),
+                         vmin=-0.5, vmax=len(nombres) - 0.5, interpolation="nearest")
+        axs[i, 1].set_title(f"{fam_} {direc} · {T('mo_b', idioma)}", fontsize=6.5, loc="left", pad=2)
+        axs[i, 1].legend(handles=[Patch(facecolor=paleta[k], edgecolor="k", linewidth=0.3, label=_corto(n_)) for k, n_ in enumerate(nombres)],
+                         loc="lower left", fontsize=5.2, frameon=True, framealpha=1, edgecolor="0.6", handlelength=1.0, borderpad=0.4,
+                         title=T("mo_leyenda", idioma), title_fontsize=5.2)
         for ax in axs[i]:
             ax.set_aspect(1 / np.cos(np.radians(10.5))); ax.tick_params(length=2.5, pad=1.5, labelsize=6)
             if FALLAS is not None:
@@ -207,7 +215,7 @@ for idioma in ("es", "en"):
             ax.set_xlabel(T('longitud', idioma) if i == n - 1 else '', fontsize=6.5)
         etiqueta_panel(axs[i, 0], "abcdefghij"[2 * i], dx=-0.1, dy=1.0)
         etiqueta_panel(axs[i, 1], "abcdefghij"[2 * i + 1], dx=-0.1, dy=1.0)
-    fig.subplots_adjust(left=0.07, right=0.98, top=0.94, bottom=0.07, hspace=0.35, wspace=0.2)
+    fig.subplots_adjust(left=0.07, right=0.98, top=0.94, bottom=0.07, hspace=0.35, wspace=0.42)
     exportar(fig, f"mosaico_nisar_{idioma}", FIG, formatos=("pdf", "png"))
     plt.close(fig)
 print(f"\nMosaicos / mosaics: {OUT} · figura / figure: {FIG}/mosaico_nisar_{{es,en}}.*")

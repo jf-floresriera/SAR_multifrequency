@@ -18,7 +18,7 @@
 | `05_documentacion/` | `pasos_ejecutados.csv` (registro), `logs/`, `auditoria_correcciones.csv`, `versiones_codigo.csv` |
 
 ## 3. Pasos del cuaderno y qué producen / Notebook steps
-`mapas_base` (Fig. 1) · `nisar_tif`, `s1_tif` (conversión a GeoTIFF; NISAR con ionosfera restada y **un archivo por frame**) · `descomp` (Este/Vertical) · `auditoria` (qué correcciones trae cada archivo) · `qc` (control de calidad por interferograma) · `ucsd_los` (LOS de UCSD) · `mosaico` (une frames/tracks vecinos de la misma familia y dirección) · `comparacion` (figura de todos los modelos) · `insar_metricas` (tablas y mapas/perfil comparables) · `vantor` (óptico ~0,4 m antes/después) · `danio_*`, `exportar`.
+`mapas_base` (Fig. 1) · `nisar_tif`, `s1_tif` (conversión a GeoTIFF; NISAR con ionosfera restada y **un archivo por frame**) · `descomp` (Este/Vertical) · `auditoria` (qué correcciones trae cada archivo) · `qc` (control de calidad por interferograma **y por mosaico**; el mosaico lleva leyenda de colores por producto) · `ucsd_los` (LOS de UCSD) · `mosaico` (une frames/tracks vecinos de la misma familia y dirección) · `comparacion` (figura de todos los modelos) · `insar_metricas` (tablas y mapas/perfil comparables) · `vantor` (óptico ~0,4 m antes/después) · `danio_*`, `exportar`.
 
 ## 4. Resultados clave de hoy / Key results
 - **Hipótesis del mar confirmada:** 42–53 % de cada huella es mar. Coherencia ≥ 0,3 sobre tierra: NISAR 162A 73 %, 054D 54 %, 061A 47 %, 126D 48 %; Sentinel-1 033A 20 %, 025D 38 %.

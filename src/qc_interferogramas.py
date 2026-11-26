@@ -74,6 +74,22 @@ except Exception as e:
     print("[!] sin capa de fallas: no se puede referenciar ni medir el campo lejano / no faults layer:", e)
     DIST = None
 
+# --- Máscara de TIERRA: hipótesis «la coherencia baja porque gran parte de la escena es mar (el agua no es coherente)».
+# --- Land mask: hypothesis "coverage is low because much of the scene is sea (water is incoherent)".
+LAND = None
+try:
+    from rasterio.features import rasterize as _ras
+    for _capa in ("paises_sudamerica_ne50", "venezuela_estados"):
+        try:
+            _g = gpd.read_file(f"{RAIZ}/01_datos_crudos/mapas_base/mapas_base.gpkg", layer=_capa)
+            LAND = _ras([(g, 1) for g in _g.geometry if g is not None], out_shape=(n_y, n_x), transform=TR, all_touched=False).astype(bool)
+            print(f"Máscara de tierra desde la capa «{_capa}»: {100 * LAND.mean():.0f} % de la ventana es tierra")
+            break
+        except Exception:
+            continue
+except Exception as e:
+    print("[!] sin máscara de tierra / no land mask:", e)
+
 prods = []
 for sensor, carpeta in (("Sentinel-1", "sentinel1"), ("NISAR", "nisar")):
     for f in sorted(glob.glob(f"{RAIZ}/02_procesados/{carpeta}/*_los_m.tif")):
@@ -94,6 +110,15 @@ for sensor, nombre, pref, ruta, iono in prods:
     if REFERENCIAR and lejos is not None and lejos.sum() > 500:
         off = float(np.nanmedian(los[lejos])); los = los - off
     cob_coh = float(np.nanmean(coh >= COH_MIN)) * 100 if np.isfinite(coh).any() else np.nan
+    tierra = {}
+    if LAND is not None:
+        foot = np.isfinite(coh) if np.isfinite(coh).any() else np.isfinite(los_raw)
+        ok_coh = (coh >= COH_MIN) if np.isfinite(coh).any() else np.isfinite(los_raw)
+        if (foot & LAND).sum() > 100:
+            tierra["huella_en_tierra_pct"] = round(100 * float((foot & LAND).sum() / max(foot.sum(), 1)), 1)
+            tierra["coh_sobre_umbral_en_tierra_pct"] = round(100 * float((ok_coh & foot & LAND).sum() / (foot & LAND).sum()), 1)
+        if (foot & ~LAND).sum() > 100:
+            tierra["coh_sobre_umbral_en_mar_pct"] = round(100 * float((ok_coh & foot & ~LAND).sum() / (foot & ~LAND).sum()), 1)
     if v.sum() < 100:
         filas.append(dict(producto=nombre, sensor=sensor, cobertura_pct=round(100 * float(v.mean()), 2), diagnostico=
                           "CASI SIN DATOS tras la máscara de coherencia: bajar COH_MIN o revisar el producto"))
@@ -116,6 +141,9 @@ for sensor, nombre, pref, ruta, iono in prods:
         dx.append("menos de 1 franja entre p2 y p98: para un Mw 7,5 se esperan decenas cerca de la falla")
     if sensor == "NISAR" and not iono:
         dx.append("NISAR SIN ionosfera restada")
+    if tierra.get("huella_en_tierra_pct", 100) < 60:
+        dx.append(f"{100 - tierra['huella_en_tierra_pct']:.0f} % de la huella es MAR (incoherente): la cobertura global subestima la de tierra "
+                  f"({tierra.get('coh_sobre_umbral_en_tierra_pct', float('nan')):.0f} % de la tierra supera coh ≥ {COH_MIN})")
     if np.isfinite(cob_coh) and cob_coh < 30:
         dx.append(f"solo {cob_coh:.0f} % de los píxeles supera coh ≥ {COH_MIN}")
     # barrido del umbral de coherencia: cobertura vs ruido en campo lejano / coherence-threshold sweep: coverage vs far-field noise
@@ -129,7 +157,7 @@ for sensor, nombre, pref, ruta, iono in prods:
                 z = los_raw[lj] - np.nanmedian(los_raw[lj])
                 barrido[f"ruido_coh{u}_mm"] = round(float(1.4826 * np.nanmedian(np.abs(z))), 1)
         print("   barrido de coherencia / sweep:", {k: v for k, v in barrido.items()})
-    filas.append(dict(**barrido, producto=nombre, sensor=sensor, ionosfera_restada=bool(iono), offset_referencia_mm=round(off, 1),
+    filas.append(dict(**barrido, **tierra, producto=nombre, sensor=sensor, ionosfera_restada=bool(iono), offset_referencia_mm=round(off, 1),
                       cobertura_pct=round(100 * float(v.mean()), 1), pct_coh_sobre_umbral=round(cob_coh, 1),
                       los_p2_mm=round(float(p2), 1), los_p98_mm=round(float(p98), 1), max_abs_mm=round(maxabs, 0),
                       fase_p2_rad=round(float(np.nanpercentile(rad, 2)), 1), fase_p98_rad=round(float(np.nanpercentile(rad, 98)), 1),
@@ -187,7 +215,8 @@ Q.to_csv(f"{OUT}/qc_interferogramas_es.csv", index=False)
 Q.to_csv(f"{OUT}/qc_interferogramas_en.csv", index=False)
 pd.set_option("display.width", 250, "display.max_colwidth", 110)
 print("\n=== DIAGNÓSTICO / DIAGNOSIS ===")
-cols = [c for c in ("producto", "ionosfera_restada", "offset_referencia_mm", "cobertura_pct", "pct_coh_sobre_umbral", "franjas_p2_p98",
+cols = [c for c in ("producto", "ionosfera_restada", "offset_referencia_mm", "cobertura_pct", "pct_coh_sobre_umbral", "huella_en_tierra_pct",
+                    "coh_sobre_umbral_en_tierra_pct", "coh_sobre_umbral_en_mar_pct", "franjas_p2_p98",
                     "relacion_senal_ruido", "diagnostico") if c in Q]
 print(Q[cols].to_string(index=False))
 print(f"\nFiguras / figures: {FIG}")

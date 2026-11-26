@@ -1,7 +1,47 @@
 # Traspaso de trabajo / Work handoff · 2026-11-26
 
-> 🇪🇸 Estado real del proyecto **verificado el 26-nov-2026** contra el Drive del autor y los cuadernos de Colab. Complementa `PROYECTO.md` (que describe el plan) con lo que **de verdad existe**, lo que falta y lo que NO hay que repetir.
+> 🇪🇸 Estado real del proyecto **verificado el 26-nov-2026** contra el Drive del autor y los cuadernos de Colab. Complementa  y [](CORRECCIONES_INSAR.md)`PROYECTO.md` (que describe el plan) con lo que **de verdad existe**, lo que falta y lo que NO hay que repetir.
 > 🇬🇧 Real project state **verified on 2026-11-26** against the author's Drive and Colab notebooks. Complements `PROYECTO.md` (the plan) with what **actually exists**, what is missing and what must NOT be repeated.
+
+## 0. ⭐ LEER PRIMERO · Estado al cierre del 26-nov-2026 (tarde) / READ FIRST · State at end of 26 Nov 2026
+
+> 🇪🇸 Para el siguiente agente (el autor cambia de agente/modelo). Lo de abajo (§1–§8) es la foto de la mañana; **§0 manda donde haya contradicción**.
+> 🇬🇧 For the next agent. §1–§8 below is the morning snapshot; **§0 wins on any contradiction.**
+
+### 0.1 Cómo trabaja el autor / How the author works (preferencias firmes)
+- **Todo bilingüe ES + EN** (figuras, tablas, pies, docs). Autor único: commits como `jf-floresriera <jf-floresriera@users.noreply.github.com>`, **sin** trailers Co-Authored-By.
+- Escribe rápido y con erratas: interpretar con generosidad; ante ambigüedad real, elegir y declarar la suposición. Quiere **celdas listas para copiar/pegar** y decir **en qué lugar** del cuaderno van.
+- Figuras estilo SRL (ver `ESTILO_FIGURAS.md`): sin título interno, (a)(b), sin solapes de texto, sin espacio perdido, exportar **PDF + EPS + TIFF + PNG**. Nunca Esri; no subir imágenes Planet/Vantor/UCSD a GitHub.
+- Procesa en **Colab** (Drive 2 TB, cuenta de `InSAR_LaGuaira_Resultados`); Earthdata por Secretos de Colab. Drive para escritorio NO está montado en su PC. No reenviar trabajos HyP3 ya hechos.
+
+### 0.2 Qué se construyó hoy (todo en `main`, probado con datos sintéticos o reales descargados aquí; **ninguna corrida real en Colab revisada aún salvo `descomp`**)
+| Pieza | Archivo | Para qué |
+|---|---|---|
+| Mapa de ubicación 3 paneles ES/EN (contexto Sudamérica, regional, costa; fallas con nombre, referencias con flecha, zona en reclamación **rayada y aproximada** a partir de regiones ADM1 de Guyana; polígono oficial opcional `zona_reclamacion_oficial.*`) | `src/mapa_ubicacion.py` (lo llama `mapas_base.py`) | Fig. 1 |
+| Óptico ~0,4 m **antes/después** gratis: Vantor (ex-Maxar) Open Data, evento `Venezuela-Earthquake-Jun-2026`, CC BY-NC | `src/vantor_buscar.py` (paso `vantor`) | panel «antes» (reemplaza mosaico Planet 4,8 m; sin pansharpening propio: el archivo `visual` ya viene fusionado) |
+| LOS de UCSD (ALOS-2 T040A/T134D/T135D y NISAR 4 tracks) → GeoTIFF | `src/ucsd_los_a_geotiff.py` (paso `ucsd_los`; ~445 MB c/u, malla real ~30 m aunque diga «500 m») | comparar con ALOS-2 y validar nuestro NISAR |
+| Métricas + mapas/perfil **comparables** (misma ventana y escala), comparación nuestro NISAR vs UCSD | `src/insar_metricas.py` (paso `insar_metricas`) | tablas y Fig. de comparación |
+| Referencia a campo lejano, ionosfera NISAR restada, auditoría de correcciones | `descomposicion_C_L.py`, `insar_metricas.py`, `nisar_gunw_a_geotiff.py`, `auditar_correcciones.py` (paso `auditoria`) | ver `CORRECCIONES_INSAR.md` |
+| Maestro: un paso se **repite solo si su código cambió** (huella md5) | `src/maestro.py` | evita «ya hecho» con código viejo |
+
+### 0.3 Hallazgos de HOY que cambian el plan
+1. **033A a 40 m YA EXISTE** (job del 19-nov, descargado el 26-nov): **no enviar nada a HyP3**. Productos S1 completos: 025D INT40, 033A INT40 y INT80. Duplicados movidos a `_duplicados/` (se pueden borrar). Caducan 4-dic (ya descargados).
+2. **Correcciones InSAR**: se asumía que los datos estaban «listos»; **no lo están** (ver `CORRECCIONES_INSAR.md`). Falta SIEMPRE: referencia, troposfera; en banda L la ionosfera se resta aparte. **El `descomp` real dio E = −0,83…+1,06 m (NISAR) y píxeles válidos 17 %/0 %/18 % (061A/126D/162A)**: casi seguro desfases sin referenciar + 126D incoherente. Repetir tras el `git pull` con `nisar_tif`, `descomp`, `auditoria`, `ucsd_los`, `insar_metricas` (todas `forzar=True`).
+3. **ALOS-2**: ASF solo tiene 13 escenas PRE de 2025; las de 2026 no están públicas. Opciones: LOS de UCSD (ya integrado, **sin corrección ionosférica**, licencia/signo no declarados), JAXA (L1.1 solo por propuesta o compra; el par L2.1 de T135D es solo amplitud — **no verificado**), o contactar a UCSD. Fecha de corte 5-dic.
+4. **Lo que dijo otra IA (lista de fuentes de ALOS-2, CBERS-4A, etc.) NO está verificado** salvo lo marcado como comprobado aquí (UCSD: 7 enlaces y formato; Vantor: STAC; INPE: 0 escenas sobre Caracas).
+5. **Novedad frente a UCSD** (su página usa S-1, NISAR ×4 y ALOS-2 con GMTSAR): nosotros aportamos **Umbra (banda X), óptico (Planet/Vantor) y daño en edificios**. Falta confirmar que no hay publicación equivalente.
+
+### 0.4 Orden de las celdas del maestro tras `git pull` (primera celda) / Cell order
+`mapas_base` (forzar) → `vantor` → `nisar_tif` (forzar) → `descomp` (forzar) → `auditoria` → `ucsd_los` → `insar_metricas` → luego figuras del suplemento. Las copias del cuaderno en Drive **no se actualizan solas**: el autor debe copiar celdas nuevas o abrir desde GitHub.
+
+### 0.5 Pendiente, por prioridad / Pending, by priority
+1. Revisar la salida real de `auditoria` y `nisar_tif`/`descomp` (¿GUNW trae troposfera/mareas?; ¿126D sirve?).
+2. Implementar: troposfera estratificada, suavizado de ionosfera, rampa, incertidumbre (semivariograma); validar con GNSS **CCS1 (coordenadas exactas pendientes)**.
+3. Conectar `vantor_buscar` al panel «antes» de la Fig. 8 (coordenadas reales del centro Umbra «Caracas Este»; el «antes» con buen sol es del 31-ene/9-feb-2026; el del 20-mar tiene sol bajo) y rehacer Figs. 1, 8 y suplemento con `estilo_figuras.py`.
+4. Umbra GEC sin descargar; figs. 6, 7, 9, 10 y Tabla 3; manuscrito completo (~400 palabras hoy); Zenodo; envío ≤ 18-dic.
+5. Decidir licencias: Planet/Vantor/UCSD (CC BY-NC o no declarada) vs acceso abierto CC BY de SRL; política de SRL sobre fronteras en disputa (zona en reclamación).
+
+---
 
 ## 1. Regla de oro: no repetir procesamiento / Golden rule: do not redo work
 - Un trabajo HyP3 se identifica por **par de escenas + resolución**, no por nombre (`src/registro_datos.py`, usado por `s1_pares_hyp3.py`). Esto evita reenvíos: antes 025D se envió 4 veces y 033A (nombre distinto) habría vuelto a enviarse.

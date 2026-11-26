@@ -38,6 +38,26 @@ def _ruta_los(pref):
     return f"{pref}_los_m.tif"
 
 
+REFERENCIAR = globals().get("REFERENCIAR", True)   # restar la mediana del campo lejano (> 25 km de fallas) a cada pasada
+KM_LEJOS = 25.0
+
+
+def _mascara_lejos():
+    """Píxeles a > KM_LEJOS km de cualquier falla GEM (grilla UTM). None si no hay capa de fallas. / far-field mask."""
+    try:
+        import geopandas as gpd
+        from rasterio.features import rasterize
+        from scipy.ndimage import distance_transform_edt
+        f = gpd.read_file(f"{RAIZ}/01_datos_crudos/mapas_base/mapas_base.gpkg", layer="fallas_activas_gem").to_crs(GRILLA_EPSG)
+        n_x, n_y = int((XMAX - XMIN) / RES), int((YMAX - YMIN) / RES)
+        m = rasterize([(g, 1) for g in f.geometry if g is not None], out_shape=(n_y, n_x),
+                      transform=from_origin(XMIN, YMAX, RES, RES), all_touched=True)
+        return distance_transform_edt(m == 0, sampling=RES / 1000.0) > KM_LEJOS
+    except Exception as e:
+        print("   [!] sin máscara de campo lejano (¿falta mapas_base?) / no far-field mask:", e)
+        return None
+
+
 def a_grilla(ruta, metodo=Resampling.bilinear):
     n_x, n_y = int((XMAX - XMIN) / RES), int((YMAX - YMIN) / RES)
     dst = np.full((n_y, n_x), np.nan, dtype="float32")
@@ -47,6 +67,9 @@ def a_grilla(ruta, metodo=Resampling.bilinear):
                   src_nodata=s.nodata, dst_transform=tr, dst_crs=f"EPSG:{GRILLA_EPSG}",
                   dst_nodata=np.nan, resampling=metodo)
     return dst, tr
+
+
+LEJOS = None
 
 
 def descomponer(pares, nombre_banda, salida):
@@ -59,6 +82,16 @@ def descomponer(pares, nombre_banda, salida):
         coh, _ = a_grilla(f"{pref}_coh.tif")
         e, _ = a_grilla(f"{pref}_losE.tif"); u, _ = a_grilla(f"{pref}_losU.tif")
         los[coh < COH_MIN] = np.nan
+        global LEJOS
+        if REFERENCIAR:
+            if LEJOS is None:
+                LEJOS = _mascara_lejos()
+            if LEJOS is not None and (np.isfinite(los) & LEJOS).sum() > 500:
+                off = float(np.nanmedian(los[LEJOS]))
+                los = los - off
+                print(f"   referencia / reference: {os.path.basename(pref)}  desfase restado / offset removed = {off*100:+.1f} cm")
+            else:
+                print(f"   [!] SIN referenciar / NOT referenced: {os.path.basename(pref)}")
         G.append(np.stack([e, u], -1)); d.append(los)
     G = np.stack(G, -2)                       # (y, x, n_obs, 2)
     d = np.stack(d, -1)                       # (y, x, n_obs)

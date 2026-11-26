@@ -35,6 +35,7 @@ RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/
 COH_MIN = globals().get("COH_MIN", 0.3)
 LIM_CM = globals().get("LIM_CM", None)
 USAR_IONO = globals().get("USAR_IONO", True)
+REFERENCIAR = globals().get("REFERENCIAR", True)   # restar la mediana del campo lejano (> 20 km de fallas) a cada producto
 TRANSECTO_LON = globals().get("TRANSECTO_LON", -66.95)
 SISMO = pd.Timestamp("2026-06-24")
 OUT = f"{RAIZ}/02_procesados/metricas_insar"
@@ -135,6 +136,7 @@ def _dist_falla_km(win):
 # ---------------------------------------------------------------- lectura y métricas
 VR = VENT["region"]
 cache = {}
+OFF = {}                      # desfase de referencia por producto (cm) / reference offset per product (cm)
 met = []
 dist = _dist_falla_km(VR)
 for i, p in prod.iterrows():
@@ -142,6 +144,16 @@ for i, p in prod.iterrows():
     coh = _a_ll(p.pref + "_coh.tif", VR)
     if np.isfinite(coh).any():
         los = np.where(coh >= COH_MIN, los, np.nan)
+    # REFERENCIA: la fase desenvuelta tiene un desfase constante ARBITRARIO; sin restarlo los mapas no son comparables.
+    # REFERENCE: unwrapped phase has an ARBITRARY constant offset; without removing it maps are not comparable.
+    off = 0.0
+    if REFERENCIAR and dist is not None:
+        lj = np.isfinite(los) & (dist > KM_FALLA)
+        if lj.sum() > 500:
+            off = float(np.nanmedian(los[lj])); los = los - off
+        else:
+            print(f"   [!] {p.nombre}: sin píxeles de campo lejano para referenciar / no far-field pixels to reference")
+    OFF[p.nombre] = off
     cache[p.nombre] = los
     v = np.isfinite(los)
     lejos = v & (dist > KM_FALLA) if dist is not None else v
@@ -151,6 +163,7 @@ for i, p in prod.iterrows():
         ionosfera=p.iono, fuente=p.fuente, sensor=p.sensor, banda=p.banda, track=p.track, fecha_ref=p.ref.date(), fecha_sec=p.sec.date(),
         linea_base_dias=p.linea_base_d, relacion_sismo=p.relacion,
         cobertura_pct=round(100 * v.mean(), 1),
+        offset_referencia_cm=round(off, 2),
         coh_media=round(float(np.nanmean(coh)), 3) if np.isfinite(coh).any() else np.nan,
         coh_ge_umbral_pct=round(100 * float(np.nanmean(coh >= COH_MIN)), 1) if np.isfinite(coh).any() else np.nan,
         los_p2_cm=round(float(np.nanpercentile(los[v], 2)), 2) if v.any() else np.nan,
@@ -162,7 +175,7 @@ for i, p in prod.iterrows():
         mirada_U_media=round(float(np.nanmean(u)), 3) if np.isfinite(u).any() else np.nan,
         producto=p.nombre))
 M = pd.DataFrame(met)
-COLS_EN = {"ionosfera": "ionosphere", "fuente": "source", "sensor": "sensor", "banda": "band", "track": "track", "fecha_ref": "ref_date", "fecha_sec": "sec_date",
+COLS_EN = {"offset_referencia_cm": "reference_offset_cm", "ionosfera": "ionosphere", "fuente": "source", "sensor": "sensor", "banda": "band", "track": "track", "fecha_ref": "ref_date", "fecha_sec": "sec_date",
            "linea_base_dias": "baseline_days", "relacion_sismo": "relation_to_quake", "cobertura_pct": "coverage_pct",
            "coh_media": "mean_coherence", "coh_ge_umbral_pct": f"coh_ge_{COH_MIN}_pct", "los_p2_cm": "los_p2_cm",
            "los_p98_cm": "los_p98_cm", "los_abs_p99_cm": "los_abs_p99_cm",
@@ -207,7 +220,7 @@ def _fig_mapas(vent, idioma, sub):
         if k >= n:
             ax.axis("off"); continue
         p = sub.iloc[k]
-        a = _a_ll(p.los, win) * 100.0
+        a = _a_ll(p.los, win) * 100.0 - OFF.get(p.nombre, 0.0)
         c = _a_ll(p.pref + "_coh.tif", win)
         if np.isfinite(c).any():
             a = np.where(c >= COH_MIN, a, np.nan)
@@ -247,7 +260,7 @@ def _fig_perfil(idioma):
     for ax, grupo, rot in ((axs[0], "propio", "a"), (axs[1], "ucsd", "b")):
         sub = prod[prod.fuente == grupo].reset_index(drop=True)
         for k, p in sub.iterrows():
-            a = _a_ll(p.los, win) * 100.0
+            a = _a_ll(p.los, win) * 100.0 - OFF.get(p.nombre, 0.0)
             c = _a_ll(p.pref + "_coh.tif", win)
             if np.isfinite(c).any():
                 a = np.where(c >= COH_MIN, a, np.nan)

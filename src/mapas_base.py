@@ -116,60 +116,8 @@ guardar(sitios, "sitios_danio")
 csv_bilingue(pd.DataFrame(fuentes, columns=["fuente", "url", "licencia"]).assign(
     fecha_acceso=pd.Timestamp.today().date().isoformat()), f"{RAIZ}/05_documentacion/fuentes_mapas_base.csv")
 
-# 5) Figura de ubicación bilingüe -----------------------------------------------------
-TXT.update({
-    "ubic_tit": {"es": "Área de estudio · doblete sísmico del 24 de junio de 2026", "en": "Study area · 24 June 2026 earthquake doublet"},
-    "ley_estados": {"es": "Límite estatal", "en": "State boundary"}, "ley_mun": {"es": "Límite municipal", "en": "Municipal boundary"},
-    "ley_vias": {"es": "Vías principales (OSM)", "en": "Main roads (OSM)"}, "ley_fallas": {"es": "Fallas activas (GEM)", "en": "Active faults (GEM)"},
-    "ley_epi": {"es": "Epicentro USGS", "en": "USGS epicentre"}, "ley_sitios": {"es": "Sitios de daño", "en": "Damage sites"},
-})
-
-
-def leer_capa(c):
-    try:
-        return gpd.read_file(GPKG, layer=c)
-    except Exception:
-        return None
-
-
-capas = {c: leer_capa(c) for c in ("venezuela_estados", "municipios_area_estudio", "vias_principales_osm",
-                                   "fallas_activas_gem", "epicentros_usgs", "sitios_danio")}
-
-
-def _mapa(idioma):
-    fig, ax = plt.subplots(figsize=(12, 5.2))
-    ext = AREA.bounds
-    if capas["municipios_area_estudio"] is not None:
-        capas["municipios_area_estudio"].boundary.plot(ax=ax, color="0.75", lw=0.4, label=T("ley_mun", idioma))
-    if capas["venezuela_estados"] is not None:
-        capas["venezuela_estados"].boundary.plot(ax=ax, color="0.35", lw=0.9, label=T("ley_estados", idioma))
-    if capas["vias_principales_osm"] is not None:
-        capas["vias_principales_osm"].plot(ax=ax, color="#E07B39", lw=0.7, label=T("ley_vias", idioma))
-    if capas["fallas_activas_gem"] is not None:
-        capas["fallas_activas_gem"].plot(ax=ax, color="#B2182B", lw=1.6, label=T("ley_fallas", idioma))
-    if capas["sitios_danio"] is not None:
-        s = capas["sitios_danio"]
-        s.plot(ax=ax, color="#2166AC", markersize=28, marker="o", edgecolor="white", zorder=5, label=T("ley_sitios", idioma))
-        for _, r in s.iterrows():
-            ax.annotate(r.sitio, (r.geometry.x, r.geometry.y), xytext=(3, 6), textcoords="offset points", fontsize=7.5)
-    if capas["epicentros_usgs"] is not None:
-        e = capas["epicentros_usgs"]
-        e.plot(ax=ax, color="gold", marker="*", markersize=320, edgecolor="black", zorder=6, label=T("ley_epi", idioma))
-        for _, r in e.iterrows():
-            ax.annotate(r.magnitud, (r.geometry.x, r.geometry.y), xytext=(8, -12), textcoords="offset points",
-                        fontsize=9, weight="bold")
-    try:
-        import contextily as cx
-        cx.add_basemap(ax, crs="EPSG:4326", source=cx.providers.Esri.WorldShadedRelief, attribution_size=5, zorder=0)
-    except Exception:
-        pass
-    ax.set_xlim(ext[0], ext[2]); ax.set_ylim(ext[1], ext[3])
-    ax.set_xlabel(T("longitud", idioma)); ax.set_ylabel(T("latitud", idioma))
-    ax.legend(loc="lower left", fontsize=8, framealpha=0.9)
-    ax.set_title(T("ubic_tit", idioma), loc="left", fontsize=11)
-    fig.tight_layout()
-    return fig
-
-
-print(guardar_bilingue(_mapa, f"{FIG}/mapa_ubicacion", formatos=("png", "pdf")))
-print(f"\nCapas en / layers in: {GPKG}  (ábralo también en QGIS / also opens in QGIS)")
+# 5) Figura de ubicación bilingüe → mapa_ubicacion.py (estilo SRL, sin Esri) / location figure in its own script
+import runpy
+_aqui = os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", ".")
+runpy.run_path(os.path.join(_aqui, "mapa_ubicacion.py"), init_globals={"RAIZ": RAIZ, "SRC": _aqui})
+print(f"Capas en / layers in: {GPKG}  (ábralo también en QGIS / also opens in QGIS)")

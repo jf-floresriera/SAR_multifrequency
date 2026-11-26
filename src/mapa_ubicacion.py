@@ -247,7 +247,7 @@ def _mapa(idioma):
     _contexto(c, idioma); etiqueta_panel(c, "a", dx=-0.17)
 
     # (b) regional
-    _fondo(a, REG); _nombres_fallas(a, REG, pos={"San Sebastián": 0.95}); _epicentros(a, REG)
+    _fondo(a, REG); _nombres_fallas(a, REG, pos={"San Sebastián": 0.13}); _epicentros(a, REG)
     for n, (la, lo) in CIUDADES.items():
         a.plot(lo, la, "s", ms=3, mfc="white", mec="k", mew=0.6, zorder=6)
         a.annotate(n, (lo, la), xytext=(4, -9), textcoords="offset points", fontsize=6, zorder=9,

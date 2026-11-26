@@ -63,7 +63,7 @@ def a_celdas(ruta_tgz):
     """Promedia las columnas en celdas DEG (streaming desde el .tar.gz). Devuelve dict de arreglos (NY, NX) y n filas."""
     S = {c: np.zeros(NY * NX, "float64") for c in ("E", "N", "U", "d")}
     C = np.zeros(NY * NX, "int32"); n = 0
-    with tarfile.open(ruta_tgz, "r:gz") as t:
+    with tarfile.open(ruta_tgz, "r:*") as t:     # el T054D no está comprimido con gzip / T054D is not gzip-compressed
         m = next(x for x in t.getmembers() if x.isfile())
         fh = t.extractfile(m)
         for ch in pd.read_csv(fh, sep=r"\s+", header=None, comment="#", dtype="float32", chunksize=2_000_000):

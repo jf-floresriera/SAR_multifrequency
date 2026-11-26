@@ -38,6 +38,9 @@ Ver [`FIGURAS_TABLAS_ESTADO.md`](FIGURAS_TABLAS_ESTADO.md): lo propuesto al inic
 🇪🇸 Cada vez que se añada o cambie una **celda** de `notebooks/00_Maestro.ipynb`, subir el número de `CUADERNO_VERSION` (primera celda) **y** de `notebooks/VERSION_CUADERNO.txt`: la primera celda compara ambos y avisa al autor si su copia en Drive está vieja y muestra los commits nuevos de GitHub. Cambios en `src/*.py` no necesitan nada: se bajan con el `git pull` de esa celda.
 🇬🇧 Whenever a **cell** of the master notebook is added/changed, bump `CUADERNO_VERSION` (first cell) **and** `notebooks/VERSION_CUADERNO.txt`; the first cell compares them, warns if the author's Drive copy is stale and lists new commits. Changes in `src/*.py` need nothing: the pull downloads them.
 
+### 0.37 ⚠️ Hallazgo crítico (26-nov, noche): los frames de NISAR se sobrescribían
+`resumen_nisar.json` (Drive, `02_procesados/nisar/`) lista **6 GUNW para 4 tracks**: T162A frames 006+007, T126D frames 083+084, T054D 083, T061A 007 (esta en EPSG:32620). Como el nombre corto era `NISAR_T<track>_<ref>_<sec>` **sin frame, el segundo frame sobrescribía al primero** → solo se analizaba la mitad de cada track (explica parte de la baja cobertura y el 126D vacío). **Corregido** en `nisar_gunw_a_geotiff.py` (`NISAR_T<track>_F<frame>_<ref>_<sec>`; los archivos viejos se mueven a `_obsoletos_sin_frame/`); `insar_metricas`/`ucsd_los` unen los frames al comparar. Tras el `git pull` el paso `nisar_tif` se repite solo (md5). Pendiente: un frame que cae entero en la zona de deformación no tiene campo lejano para referenciar (el QC lo avisa).
+
 ### 0.4 Orden de las celdas del maestro tras `git pull` (primera celda) / Cell order
 `mapas_base` (forzar) → `vantor` → `nisar_tif` (forzar) → `descomp` (forzar) → `auditoria` → `ucsd_los` → `insar_metricas` → luego figuras del suplemento. Las copias del cuaderno en Drive **no se actualizan solas**: el autor debe copiar celdas nuevas o abrir desde GitHub.
 

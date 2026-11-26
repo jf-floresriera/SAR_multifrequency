@@ -87,13 +87,14 @@ def escribir(arr, ruta):
 
 def _nuestro(track, ref, sec):
     """Nuestro producto NISAR del mismo track y par, remuestreado a esta malla / our NISAR product, resampled to this grid."""
-    for f in glob.glob(f"{RAIZ}/02_procesados/nisar/NISAR_T{track}_{ref}_{sec}_los_m.tif"):
+    out = None
+    for f in sorted(glob.glob(f"{RAIZ}/02_procesados/nisar/NISAR_T{track}_*{ref}_{sec}_los_m.tif")):    # todos los frames / all frames
         dst = np.full((NY, NX), np.nan, "float32")
         with rasterio.open(f) as s:
             reproject(rasterio.band(s, 1), dst, src_transform=s.transform, src_crs=s.crs, src_nodata=s.nodata,
                       dst_transform=TR, dst_crs="EPSG:4326", dst_nodata=np.nan, resampling=Resampling.average)
-        return dst
-    return None
+        out = dst if out is None else np.where(np.isfinite(out), out, dst)
+    return out
 
 
 filas = []

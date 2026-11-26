@@ -51,12 +51,15 @@ def guardar(arr, x, y, epsg, ruta, nodata=np.nan):
 
 
 resumen = []
+LEGADO = set()
 for f in sorted(glob.glob(f"{ENTRADA}/*GUNW*.h5")):
     base = os.path.basename(f).replace(".h5", "")
     m = re.search(r"GUNW_\d+_(\d{3})_([AD])_(\d{3})", base)
     track = f"{m.group(1)}{m.group(2)}" if m else "NA"
+    frame = m.group(3) if m else "000"          # cada track tiene 2+ frames: ANTES se sobrescribían / each track has 2+ frames: they used to overwrite each other
     fechas = re.findall(r"(\d{8})T\d{6}", base)
-    corto = f"NISAR_T{track}_{fechas[0]}_{fechas[-1]}" if fechas else base[:40]
+    corto = f"NISAR_T{track}_F{frame}_{fechas[0]}_{fechas[-1]}" if fechas else base[:40]
+    LEGADO.add((f"NISAR_T{track}_{fechas[0]}_{fechas[-1]}" if fechas else None))
     print(f"\n== {corto}")
     with h5py.File(f, "r") as h:
         p_unw = buscar(h, "unwrappedPhase", "unwrappedInterferogram")
@@ -134,7 +137,7 @@ for f in sorted(glob.glob(f"{ENTRADA}/*GUNW*.h5")):
             print("   [!] No se encontraron vectores LOS en radarGrid")
 
         v = los[np.isfinite(los)]
-        info = dict(producto=base, nombre_corto=corto, track=track, epsg=epsg,
+        info = dict(producto=base, nombre_corto=corto, track=track, frame=frame, epsg=epsg,
                     lambda_m=round(lam, 5), fecha_ref=fechas[0] if fechas else None,
                     fecha_sec=fechas[-1] if fechas else None,
                     tiene_ionosfera=bool(p_ion), tiene_vectores_los=bool(vec),
@@ -145,4 +148,13 @@ for f in sorted(glob.glob(f"{ENTRADA}/*GUNW*.h5")):
         print(json.dumps(info, indent=1))
 
 json.dump(resumen, open(f"{SALIDA}/resumen_nisar.json", "w"), indent=1)
+# Los archivos del esquema antiguo (sin frame) contenían SOLO el último frame de cada track: se apartan para no duplicarlos.
+# Old-scheme files (no frame) held ONLY the last frame of each track: moved aside so they are not double-counted.
+import shutil
+_dest = f"{SALIDA}/_obsoletos_sin_frame"
+for pref_ in sorted(x for x in LEGADO if x):
+    for fa in glob.glob(f"{SALIDA}/{pref_}_*.tif"):
+        os.makedirs(_dest, exist_ok=True)
+        shutil.move(fa, os.path.join(_dest, os.path.basename(fa)))
+        print("   apartado / moved aside:", os.path.basename(fa))
 print(f"\n{len(resumen)} productos convertidos -> {SALIDA}")

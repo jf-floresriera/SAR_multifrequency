@@ -65,6 +65,7 @@ for banda, sensor, carpeta in (("C", "Sentinel-1", "sentinel1"), ("L", "NISAR", 
             continue
         ref, sec = pd.Timestamp(d[0]), pd.Timestamp(d[-1])
         track = (re.search(r"_T(\w+?)_", nombre) or [None, ""])[1]
+        frame = (re.search(r"_F(\d{3})_", nombre) or [None, ""])[1]
         fuente = "ucsd" if sensor == "UCSD" else "propio"
         if sensor == "UCSD":
             sensor = "ALOS-2 (UCSD)" if "ALOS2" in nombre else "NISAR (UCSD)"
@@ -78,7 +79,7 @@ for banda, sensor, carpeta in (("C", "Sentinel-1", "sentinel1"), ("L", "NISAR", 
         else:
             iono = "corregida (división espectral, GUNW)" if los_f != f else "NO corregida (sin capa ionosférica)"
         rel = "PRE" if sec < SISMO else ("POST" if ref >= SISMO else "CO")
-        filas.append(dict(los=los_f, iono=iono, fuente=fuente, sensor=sensor, banda=banda, track=track, nombre=nombre, pref=pref, ref=ref, sec=sec,
+        filas.append(dict(frame=frame, los=los_f, iono=iono, fuente=fuente, sensor=sensor, banda=banda, track=track, nombre=nombre, pref=pref, ref=ref, sec=sec,
                           linea_base_d=(sec - ref).days, relacion=rel))
 prod = pd.DataFrame(filas)
 if prod.empty:
@@ -198,6 +199,8 @@ print(f"\nLímite de color común / common colour limit: ±{LIM:g} mm")
 def _titulo(p, idioma):
     f = lambda t: f"{t.day} {['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][t.month-1] if idioma=='es' else t.strftime('%b').lower()}"
     tr = f" {p.track}" if p.track else ""
+    if p.frame:
+        tr += f" F{p.frame}"
     dup = ((prod.ref == p.ref) & (prod.sec == p.sec) & (prod.sensor == p.sensor)).sum() > 1
     if dup and not p.track:
         tr = f" #{p.nombre[-4:]}"        # varios productos del mismo par (p. ej. 40 m y 80 m) / several products of the same pair
@@ -284,9 +287,13 @@ pares = []
 for _, u in prod[(prod.fuente == "ucsd") & prod.sensor.str.startswith("NISAR")].iterrows():
     q = prod[(prod.fuente == "propio") & (prod.sensor == "NISAR") & (prod.track == u.track) & (prod.ref == u.ref) & (prod.sec == u.sec)]
     if len(q):
-        pares.append((q.iloc[0], u))
+        pares.append((q, u))
 for q, u in pares:
-    a = cache[q.nombre]; b = cache[u.nombre]
+    a = None
+    for _n in q.nombre:                                  # unir los frames del mismo track / merge the frames of the same track
+        a = cache[_n] if a is None else np.where(np.isfinite(a), a, cache[_n])
+    q = q.iloc[0]
+    b = cache[u.nombre]
     v = np.isfinite(a) & np.isfinite(b)
     if v.sum() < 1000:
         continue

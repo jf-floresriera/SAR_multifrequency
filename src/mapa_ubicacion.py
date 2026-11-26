@@ -2,7 +2,7 @@
 """
 Figura de ubicación bilingüe (ES/EN) · candidata a Figura 1 / Bilingual location figure (candidate Fig. 1)
 
-(a) Regional: fallas activas, epicentros, recuadro de (b).   (b) Costa de La Guaira: 6 sitios de daño, referencias.
+(a) Contexto Sudamérica · (b) Regional: fallas, epicentros, recuadro de (c) · (c) Costa de La Guaira: 6 sitios de daño, referencias.
 Estilo / style: src/estilo_figuras.py (sin título interno, (a)(b) fuera, Okabe-Ito, SIN Esri / no Esri basemap).
 Lee / reads: <RAIZ>/01_datos_crudos/mapas_base/mapas_base.gpkg (lo crea mapas_base.py / created by mapas_base.py)
 Salida / output: <RAIZ>/04_figuras/borradores/mapa_ubicacion_{es,en}.{pdf,eps,tiff,png}
@@ -33,10 +33,13 @@ TXT.update({
     "u_sitios": {"es": "Sitios de daño", "en": "Damage sites"},
     "u_ref": {"es": "Referencias", "en": "Reference points"},
     "u_mar": {"es": "Mar Caribe", "en": "Caribbean Sea"},
+    "u_recl": {"es": "Zona en\nreclamación", "en": "Claimed\nzone (approx.)"},
+    "u_pac": {"es": "Océano Pacífico", "en": "Pacific Ocean"},
+    "u_atl": {"es": "Océano Atlántico", "en": "Atlantic Ocean"},
     "u_Playa Grande": {"es": "Playa Grande", "en": "Playa Grande"},
 })
 
-REG = (-69.2, -65.9, 9.9, 11.0)          # (a)
+REG = (-69.2, -65.9, 9.75, 11.2)          # (a)
 ZOOM = (-67.32, -66.62, 10.46, 10.70)    # (b)
 SITIOS = {  # nombre: (lat, lon, dx, dy en puntos / offsets in points) — escalonados para no solaparse / staggered
     "Catia La Mar": (10.6055, -67.0324, -34, 30), "Playa Grande": (10.6100, -67.0103, 24, 30),
@@ -58,6 +61,53 @@ def _capa(c):
 
 
 capas = {c: _capa(c) for c in ("venezuela_estados", "vias_principales_osm", "fallas_activas_gem", "epicentros_usgs")}
+MOSTRAR_RECLAMACION = globals().get("MOSTRAR_RECLAMACION", True)   # False → no dibujar la zona / do not draw the zone
+
+
+def _zona_reclamacion():
+    """Guayana Esequiba ≈ Guyana al oeste del río Esequibo. APROXIMADA: unión de regiones ADM1 de geoBoundaries
+    (Barima-Waini, Pomeroon-Supenaam, Cuyuni-Mazaruni, Potaro-Siparuni, Upper Takutu-Upper Essequibo + sur de East Berbice-Corentyne 'Tigri'). Reemplazar por el polígono oficial si se dispone.
+    Approximate 'zona en reclamación' (Essequibo claim area); replace with the official polygon if available."""
+    # 1) polígono oficial aportado por el usuario (si existe) / user-supplied official polygon (if present)
+    import glob
+    for f in sorted(glob.glob(os.path.join(os.path.dirname(GPKG), "zona_reclamacion_oficial.*"))):
+        if f.lower().endswith((".shp", ".geojson", ".json", ".gpkg")):
+            try:
+                return gpd.read_file(f).to_crs(4326)
+            except Exception as e:
+                print("[!] no pude leer / cannot read", f, e)
+    g = _capa("zona_reclamacion_aprox2")
+    if g is not None:
+        return g
+    try:
+        import io, requests
+        h = {"User-Agent": "GUAIRA-SAR research (github.com/jf-floresriera/SAR_multifrequency)"}
+        m = requests.get("https://www.geoboundaries.org/api/current/gbOpen/GUY/ADM1/", headers=h, timeout=60).json()
+        r = requests.get(m["gjDownloadURL"], headers=h, timeout=120); r.raise_for_status()
+        a = gpd.read_file(io.BytesIO(r.content)).to_crs(4326)
+        from shapely.geometry import box as _bx
+        oeste = a[a.shapeName.isin(["Barina-Waini", "Pomeroon-Supenaam", "Cuyuni-Mazaruni", "Potaro-Siparuni",
+                                    "Upper Takutu-Upper Essequibo"])].geometry.unary_union
+        tigri = a[a.shapeName == "East Berbice-Corentyne"].geometry.unary_union.intersection(_bx(-60, 0, -56, 3.6))
+        g = gpd.GeoDataFrame({"nombre": ["Zona en reclamación (aprox.)"]}, geometry=[oeste.union(tigri)], crs=4326)
+        try:
+            g.to_file(GPKG, layer="zona_reclamacion_aprox2", driver="GPKG")
+        except Exception:
+            pass
+        return g
+    except Exception as e:
+        print("[!] zona en reclamación:", e)
+        return None
+
+
+capas["paises"] = _capa("paises_sudamerica_ne50")
+if capas["paises"] is None:      # respaldo: bajar directamente / fallback: download directly
+    try:
+        from shapely.geometry import box as _box
+        _g = gpd.read_file("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson")
+        capas["paises"] = _g[_g.intersects(_box(-95, -60, -50, 20))]
+    except Exception as _e:
+        print("[!] sin mapa de contexto / no context map:", _e)
 
 
 def _escala(ax, km, loc=(0.04, 0.07)):
@@ -109,7 +159,7 @@ def _nombres_fallas(ax, ext, min_frac=0.12, size=6, pos=0.5):
             mejor[nom] = g
     umbral = min_frac * (ext[1] - ext[0])
     for nom, g in mejor.items():
-        if g.length < umbral:
+        if g.length < umbral or len(nom) > 16:      # rótulos largos no caben / long names do not fit
             continue
         p0, p1 = g.interpolate(pos - 0.05, normalized=True), g.interpolate(pos + 0.05, normalized=True)
         ang = np.degrees(np.arctan2((p1.y - p0.y), (p1.x - p0.x) * asp))
@@ -133,25 +183,84 @@ def _epicentros(ax, ext, etiquetas=True):
                             fontweight="bold", zorder=9, bbox=dict(fc="white", ec="none", pad=0.6, alpha=1))
 
 
+PAISES = {  # ADMIN de Natural Earth → (es, en, lon, lat): rótulos del mapa de contexto / context-map labels
+    "Colombia": ("Colombia", "Colombia", -73.5, 3.5), "Brazil": ("Brasil", "Brazil", -62.5, -1.5),
+    "Guyana": ("Guyana", "Guyana", -57.9, 3.2), "Panama": ("Panamá", "Panama", -80.6, 8.4),
+    "Ecuador": ("Ecuador", "Ecuador", -78.6, -1.2), "Peru": ("Perú", "Peru", -75.0, -5.0)}
+CTX = (-86.0, -54.0, -8.0, 17.0)         # (a) contexto continental / continental context
+
+
+def _contexto(ax, idioma):
+    """(a) Sudamérica y el Caribe: Venezuela resaltada + recuadro de (b)."""
+    ax.set_facecolor(C["mar"])
+    p = capas["paises"]
+    if p is not None:
+        p.plot(ax=ax, facecolor="#e4e4df", edgecolor="#777777", lw=0.3, zorder=1)
+        p[p.ADMIN == "Venezuela"].plot(ax=ax, facecolor="#fbd9b5", edgecolor="#8a3a00", lw=0.7, zorder=2)
+    if MOSTRAR_RECLAMACION:
+        z = _zona_reclamacion()
+        if z is not None:
+            plt.rcParams["hatch.linewidth"] = 0.5
+            # rayada, sin relleno de Venezuela: se distingue del país / hatched, not Venezuela's fill colour
+            z.plot(ax=ax, facecolor="white", edgecolor="#8a3a00", hatch="//////", lw=0.5, zorder=3)
+            ax.annotate(T("u_recl", idioma), xy=(-59.6, 5.6), xytext=(-55.4, 10.4), textcoords="data", fontsize=5.5,
+                        ha="center", va="center", color="#8a3a00", zorder=7,
+                        bbox=dict(fc="white", ec="#8a3a00", lw=0.4, pad=1.2),
+                        arrowprops=dict(arrowstyle="-|>", lw=0.6, color="#8a3a00", mutation_scale=6, shrinkA=0, shrinkB=0))
+    ax.set_xlim(CTX[0], CTX[1]); ax.set_ylim(CTX[2], CTX[3])
+    ax.set_aspect(1 / np.cos(np.radians((CTX[2] + CTX[3]) / 2)))
+    for k, (es, en, lo, la) in PAISES.items():
+        ax.text(lo, la, es if idioma == "es" else en, fontsize=6, ha="center", va="center", color="#444444", zorder=4)
+    ax.text(-65.6, 7.2, "Venezuela", fontsize=7.5, fontweight="bold", ha="center", va="center", color="#8a3a00", zorder=5)
+    ax.text(-73.0, 15.0, T("u_mar", idioma), fontsize=6.5, ha="center", color="#4a6f8a", zorder=4)
+    ax.text(-84.7, -1.5, T("u_pac", idioma), rotation=90, va="center", fontsize=6.5, ha="center", color="#4a6f8a", zorder=4)
+    ax.text(-57.0, 13.2, T("u_atl", idioma), fontsize=6.5, ha="center", color="#4a6f8a", zorder=4)
+    ax.add_patch(Rectangle((REG[0], REG[2]), REG[1] - REG[0], REG[3] - REG[2], fill=False, ec="k", lw=0.9, zorder=7))
+    ax.annotate("(b)", (REG[0], REG[3]), xytext=(-2, 3), textcoords="offset points", fontsize=7, fontweight="bold", zorder=8)
+    ax.tick_params(length=2.5, pad=1.5)
+    _escala(ax, 500, loc=(0.52, 0.05)); flecha_norte(ax, loc=(0.93, 0.22), largo=0.12)
+    ax.set_xlabel(T("longitud", idioma)); ax.set_ylabel(T("latitud", idioma))
+
+
 def _mapa(idioma):
     aplicar_estilo(7)
-    fig = plt.figure(figsize=(180 / 25.4, 128 / 25.4))
-    gs = fig.add_gridspec(2, 1, height_ratios=[1.0, 0.82], hspace=0.28)
-    a = fig.add_subplot(gs[0]); b = fig.add_subplot(gs[1])
+    W, H = 180.0, 140.0                                  # mm = tamaño final / final size
 
-    # (a) regional
+    def _eje(x, y, w, h):
+        return fig.add_axes([x / W, y / H, w / W, h / H])
+    fig = plt.figure(figsize=(W / 25.4, H / 25.4))
+    c_w = 50.0; c_h = c_w * (CTX[3] - CTX[2]) / ((CTX[1] - CTX[0]) * np.cos(np.radians((CTX[2] + CTX[3]) / 2)))
+    a_w = 98.0; a_h = a_w * (REG[3] - REG[2]) / ((REG[1] - REG[0]) * np.cos(np.radians((REG[2] + REG[3]) / 2)))
+    b_w = 164.0; b_h = b_w * (ZOOM[3] - ZOOM[2]) / ((ZOOM[1] - ZOOM[0]) * np.cos(np.radians((ZOOM[2] + ZOOM[3]) / 2)))
+    fila1 = max(c_h, a_h)
+    y_b = 17.0                                           # deja sitio a eje x y leyenda / room for x-axis and legend
+    y_top = y_b + b_h + 8.0                             # separación entre filas / row gap
+    c = _eje(14.0, y_top + fila1 - c_h, c_w, c_h)
+    a = _eje(14.0 + c_w + 15.0, y_top + fila1 - a_h, a_w, a_h)
+    b = _eje(14.0, y_b, b_w, b_h)
+    fig.set_size_inches(W / 25.4, (y_top + fila1 + 5.0) / 25.4)
+    # reescalar posiciones a la altura final / rescale positions to final height
+    H2 = y_top + fila1 + 5.0
+    for ax_, (x_, y_, w_, h_) in ((c, (14.0, y_top + fila1 - c_h, c_w, c_h)), (a, (14.0 + c_w + 15.0, y_top + fila1 - a_h, a_w, a_h)),
+                                  (b, (14.0, y_b, b_w, b_h))):
+        ax_.set_position([x_ / W, y_ / H2, w_ / W, h_ / H2])
+
+    # (a) contexto continental / continental context
+    # (a) contexto: Sudamérica / continental context
+    _contexto(c, idioma); etiqueta_panel(c, "a", dx=-0.17)
+
+    # (b) regional
     _fondo(a, REG); _nombres_fallas(a, REG); _epicentros(a, REG)
     for n, (la, lo) in CIUDADES.items():
         a.plot(lo, la, "s", ms=3, mfc="white", mec="k", mew=0.6, zorder=6)
         a.annotate(n, (lo, la), xytext=(4, -9), textcoords="offset points", fontsize=6, zorder=7)
-    a.text(-67.9, 10.86, T("u_mar", idioma), fontsize=7, style="normal", color="#4a6f8a", ha="center")
     a.add_patch(Rectangle((ZOOM[0], ZOOM[2]), ZOOM[1] - ZOOM[0], ZOOM[3] - ZOOM[2], fill=False, ec="k", lw=0.8, zorder=7))
-    a.annotate("(b)", (ZOOM[1], ZOOM[3]), xytext=(2, 3), textcoords="offset points", fontsize=7, fontweight="bold")
-    _escala(a, 50); flecha_norte(a, loc=(0.96, 0.52), largo=0.14)
+    a.annotate("(c)", (ZOOM[0], ZOOM[2]), xytext=(-3, -9), ha="right", textcoords="offset points", fontsize=7, fontweight="bold")
+    _escala(a, 50); flecha_norte(a, loc=(0.96, 0.40), largo=0.14)
     a.set_xlabel(T("longitud", idioma)); a.set_ylabel(T("latitud", idioma))
-    etiqueta_panel(a, "a", dx=-0.075)
+    etiqueta_panel(a, "b", dx=-0.1)
 
-    # (b) costa de La Guaira
+    # (c) costa de La Guaira
     _fondo(b, ZOOM); _nombres_fallas(b, ZOOM, min_frac=0.25, pos=0.33); _epicentros(b, ZOOM)
     for n, (la, lo, dx, dy, ha) in REFS.items():
         b.plot(lo, la, "^", ms=3.5, mfc="white", mec="k", mew=0.6, zorder=6)
@@ -166,7 +275,7 @@ def _mapa(idioma):
                    arrowprops=dict(arrowstyle="-", lw=0.5, color="0.2", shrinkA=0, shrinkB=1.5))
     _escala(b, 10); flecha_norte(b, loc=(0.97, 0.80), largo=0.22)
     b.set_xlabel(T("longitud", idioma)); b.set_ylabel(T("latitud", idioma))
-    etiqueta_panel(b, "b", dx=-0.075)
+    etiqueta_panel(b, "c", dx=-0.075)
 
     h = [Line2D([], [], color=C["falla"], lw=1.2, label=T("u_fallas", idioma)),
          Line2D([], [], color=C["via"], lw=0.8, label=T("u_vias", idioma)),
@@ -174,7 +283,7 @@ def _mapa(idioma):
          Line2D([], [], marker="*", ls="", ms=9, mfc="#F0E442", mec="k", label=T("u_epi", idioma)),
          Line2D([], [], marker="o", ls="", ms=4.5, mfc=C["sitio"], mec="white", label=T("u_sitios", idioma)),
          Line2D([], [], marker="^", ls="", ms=4, mfc="white", mec="k", label=T("u_ref", idioma))]
-    fig.legend(handles=h, loc="lower center", ncol=6, frameon=False, bbox_to_anchor=(0.5, -0.03),
+    fig.legend(handles=h, loc="lower center", ncol=6, frameon=False, bbox_to_anchor=(0.5, -0.005),
                handlelength=1.4, columnspacing=1.2, fontsize=6.5)
     return fig
 

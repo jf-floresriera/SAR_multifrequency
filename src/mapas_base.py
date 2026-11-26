@@ -113,6 +113,15 @@ SITIOS = {"Catia La Mar": (10.6055, -67.0324), "Playa Grande": (10.6100, -67.010
 sitios = gpd.GeoDataFrame([dict(sitio=k, geometry=Point(v[1], v[0])) for k, v in SITIOS.items()], crs=4326)
 guardar(sitios, "sitios_danio")
 
+# 4b) Países de Sudamérica y el Caribe (Natural Earth 1:50 m, dominio público) para el mapa de contexto
+try:
+    _ne = gpd.read_file("https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson")
+    _ne = _ne[_ne.intersects(box(-95, -60, -50, 20))][["ADMIN", "NAME", "NAME_ES", "ISO_A3", "geometry"]]
+    guardar(_ne, "paises_sudamerica_ne50")
+    fuentes.append(("Natural Earth 1:50m Admin 0 (países / countries)", "https://www.naturalearthdata.com", "public domain"))
+except Exception as e:
+    print(f"[!] Natural Earth: {e}")
+
 csv_bilingue(pd.DataFrame(fuentes, columns=["fuente", "url", "licencia"]).assign(
     fecha_acceso=pd.Timestamp.today().date().isoformat()), f"{RAIZ}/05_documentacion/fuentes_mapas_base.csv")
 

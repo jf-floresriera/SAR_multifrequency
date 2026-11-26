@@ -63,7 +63,7 @@ Ver [`FIGURAS_TABLAS_ESTADO.md`](FIGURAS_TABLAS_ESTADO.md): lo propuesto al inic
 | Inventario NISAR / Umbra / Planet (CSV) | ✅ | `inventario_2026/{nisar_filtrado,umbra_inventario,umbra_planet_sitios}/` |
 | Figuras Umbra × Planet v2 (6 sitios, ES/EN) | ✅ pero **no publicables** (ver §4) | `inventario_2026/umbra_planet_sitios/` |
 | Umbra GEC | ⏳ sin descargar | — |
-| ALOS-2 | ❌ **nunca se obtuvo ni procesó** (ver §5) | — |
+| ALOS-2 | 🟡 SLC post-evento **no obtenido**; LOS de UCSD (3 tracks) integrables con `ucsd_los` (ver §0 y §5) | `ucsd_los` → `02_procesados/ucsd/` |
 | GNSS CCS1 (coordenadas exactas) | ❌ pendiente | — |
 | `GUAIRA-SAR/04_figuras/` | vacía (solo `borradores/`) | — |
 
@@ -84,7 +84,7 @@ Todas tienen título interno, rótulos A/B/1/2 en vez de (a)(b), paleta jet, mos
 - **Planet es CC BY-NC y Esri es restrictivo: no subir esas imágenes al repositorio.**
 
 ## 5. ALOS-2: por qué está pendiente y cuándo hacerlo / ALOS-2 status
-- Solo existe `alos2_buscar.py` (una búsqueda en ASF); no hay evidencia de que haya devuelto escenas. `VargaS_Earthquake` buscó **ALOS-1 (terminó en 2011) → 0 escenas**: no es ALOS-2.
+- **Actualizado 26-nov:** `alos2_buscar.py` (ASF, 2025-01-01→2026-08-31) devolvió **13 escenas PRE-evento de 2025 (WBD; paths 39/40/133/134/135) y ninguna de 2026**. UCSD usó ALOS-2 ScanSAR de JAXA (T040A 14-ene-2025→30-jun-2026, T134D 10-jun→8-jul-2026, T135D 15→29-jun-2026; GMTSAR, sin corrección ionosférica) y publica los LOS procesados: ya integrados con `ucsd_los` (ver §0). Las escenas post-evento solo se conseguirían de JAXA (propuesta/compra/Open&Free L2.1 de amplitud: no verificado) o pidiéndolas a UCSD. Antes de lo anterior: `VargaS_Earthquake` buscó **ALOS-1 (terminó en 2011) → 0 escenas**: no es ALOS-2.
 - JAXA liberó el ScanSAR del sismo el 3-jul-2026; el espejo de ASF llega con retraso. Si ASF no lo tiene: portal de JAXA, o **citar** los LOS ALOS-2 de Scripps/UCSD.
 - Procesarlo exige GMTSAR o ISCE2 (ScanSAR en ráfagas, pesado). **Cuándo:** después de (1) 033A a 40 m, (2) E/U en C y L con S1 + NISAR, (3) validación GNSS. **Fecha de corte propuesta: 5-dic-2026**; si no está procesado, ALOS-2 pasa al suplemento / trabajo futuro y el artículo se sostiene con S1 + NISAR (+ UCSD citado).
 - Otras bandas/sensores que se podrían sumar (**disponibilidad para este evento NO verificada**): SAOCOM (L, CONAE), TerraSAR-X/TanDEM-X y COSMO-SkyMed (X), ICEYE y Capella (X, programas de datos abiertos), RADARSAT-2/RCM (C), ALOS-4 (L).

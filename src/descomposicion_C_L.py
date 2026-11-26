@@ -46,11 +46,31 @@ def descomponer(pares, nombre_banda, salida):
         G.append(np.stack([e, u], -1)); d.append(los)
     G = np.stack(G, -2)                       # (y, x, n_obs, 2)
     d = np.stack(d, -1)                       # (y, x, n_obs)
-    ok = np.all(np.isfinite(d), -1) & np.all(np.isfinite(G), (-1, -2))
-    E = np.full(ok.shape, np.nan, "float32"); U = E.copy()
-    Gv, dv = G[ok], d[ok][..., None]
-    sol = np.linalg.pinv(Gv) @ dv             # (n, 2, 1)
-    E[ok], U[ok] = sol[:, 0, 0], sol[:, 1, 0]
+    n = d.shape[-1]
+    valido = np.isfinite(d) & np.all(np.isfinite(G), -1)          # (y, x, n_obs)
+    print(f"  {nombre_banda}: píxeles válidos por pasada / valid pixels per track:",
+          [f"{100 * valido[..., k].mean():.1f}%" for k in range(n)])
+    E = np.full(d.shape[:2], np.nan, "float32"); U = E.copy(); NOBS = np.zeros(d.shape[:2], "uint8")
+    import itertools
+    # Cada píxel se resuelve con las pasadas que tenga (mínimo 2, con geometrías distintas: cond(G) < 15)
+    # Each pixel is solved with the tracks it has (min 2, distinct geometry: cond(G) < 15)
+    for k in range(n, 1, -1):
+        for comb in itertools.combinations(range(n), k):
+            m = np.all(valido[..., list(comb)], -1) & (NOBS == 0)
+            if not m.any():
+                continue
+            Gv = G[m][:, list(comb), :]; dv = d[m][:, list(comb)][..., None]
+            sv = np.linalg.svd(Gv, compute_uv=False)
+            buena = (sv[:, 0] / np.maximum(sv[:, 1], 1e-9)) < 15
+            idx = np.flatnonzero(m.ravel())[buena]
+            if idx.size == 0:
+                continue
+            sol = np.linalg.pinv(Gv[buena]) @ dv[buena]
+            E.ravel()[idx], U.ravel()[idx] = sol[:, 0, 0], sol[:, 1, 0]
+            NOBS.ravel()[idx] = k
+    ok = NOBS > 0
+    print(f"  {nombre_banda}: píxeles resueltos / resolved pixels = {ok.sum()} "
+          f"(2 pasadas: {(NOBS == 2).sum()}, 3+: {(NOBS >= 3).sum()})")
     perfil = dict(driver="GTiff", height=E.shape[0], width=E.shape[1], count=1, dtype="float32",
                   crs=f"EPSG:{GRILLA_EPSG}", transform=tr, nodata=np.nan, compress="deflate")
     for k, v in (("E", E), ("U", U)):
@@ -91,20 +111,79 @@ if CCS1_LON is not None:
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
-ext = [XMIN/1e3, XMAX/1e3, YMIN/1e3, YMAX/1e3]
-datos = [(E_C, "E_C"), (E_L, "E_L"), (E_L - E_C, "E_LC"), (U_C, "U_C"), (U_L, "U_L"), (U_L - U_C, "U_LC")]
+from rasterio.warp import reproject as _rep, Resampling as _R
+from rasterio.transform import from_origin as _fo
+from pyproj import Transformer as _Tr
+from estilo_figuras import aplicar_estilo, etiqueta_panel, CMAPS, exportar
+
+# --- reproyectar a lon/lat para dibujar con coordenadas geográficas y capas de contexto / to lon-lat for context layers
+_t = _Tr.from_crs(GRILLA_EPSG, 4326, always_xy=True)
+_xs, _ys = _t.transform([XMIN, XMAX, XMIN, XMAX], [YMIN, YMIN, YMAX, YMAX])
+LON0, LON1, LAT0, LAT1 = min(_xs), max(_xs), min(_ys), max(_ys)
+DEG = 0.0008
+_ng, _nf = int(round((LON1 - LON0) / DEG)), int(round((LAT1 - LAT0) / DEG))
+_tr_ll = _fo(LON0, LAT1, DEG, DEG)
+
+
+def _a_ll(a):
+    out = np.full((_nf, _ng), np.nan, "float32")
+    _rep(a.astype("float32"), out, src_transform=tr, src_crs=f"EPSG:{GRILLA_EPSG}", dst_transform=_tr_ll,
+         dst_crs="EPSG:4326", src_nodata=np.nan, dst_nodata=np.nan, resampling=_R.nearest)
+    return out
+
+
+def _capas():
+    import geopandas as gpd
+    g = f"{RAIZ}/01_datos_crudos/mapas_base/mapas_base.gpkg"
+    out = {}
+    for c in ("venezuela_estados", "fallas_activas_gem", "epicentros_usgs", "sitios_danio"):
+        try:
+            out[c] = gpd.read_file(g, layer=c)
+        except Exception:
+            out[c] = None
+    return out
+
+
+CAP = _capas()
+datos = [("E_C", E_C), ("U_C", U_C), ("E_L", E_L), ("U_L", U_L), ("E_LC", E_L - E_C), ("U_LC", U_L - U_C)]
+ll = {k: _a_ll(v) for k, v in datos}
 
 
 def _fig(idioma):
-    fig, axs = plt.subplots(2, 3, figsize=(16, 6.5), constrained_layout=True)
-    for ax, (a, clave) in zip(axs.flat, datos):
-        lim = np.nanpercentile(np.abs(a), 98) if np.isfinite(a).any() else 1
-        im = ax.imshow(a, extent=ext, cmap="RdBu_r", norm=TwoSlopeNorm(0, -lim, lim))
-        ax.set_title(T(clave, idioma), loc="left", fontsize=10)
-        ax.set_xlabel(T("este_km", idioma)); ax.set_ylabel(T("norte_km", idioma))
-        fig.colorbar(im, ax=ax, shrink=0.8, label="m")
+    aplicar_estilo(7)
+    fig, axs = plt.subplots(3, 2, figsize=(180 / 25.4, 128 / 25.4))
+    cm = CMAPS["divergente"] if "CMAPS" in globals() and "divergente" in CMAPS else "RdBu_r"
+    for k, (ax, (clave, _)) in enumerate(zip(axs.flat, datos)):
+        a = ll[clave] * 100.0                                  # m → cm
+        lim = np.nanpercentile(np.abs(a), 98) if np.isfinite(a).any() else 1.0
+        lim = max(lim, 1.0)
+        im = ax.imshow(a, extent=[LON0, LON1, LAT0, LAT1], cmap=cm, norm=TwoSlopeNorm(0, -lim, lim),
+                       interpolation="nearest", zorder=2)
+        ax.set_facecolor("#e8f0f7")                            # mar / sea (los NaN dejan ver el fondo)
+        if CAP["venezuela_estados"] is not None:
+            CAP["venezuela_estados"].boundary.plot(ax=ax, color="#444444", lw=0.35, zorder=3)
+        if CAP["fallas_activas_gem"] is not None:
+            CAP["fallas_activas_gem"].plot(ax=ax, color="#222222", lw=0.6, zorder=4)
+        if CAP["epicentros_usgs"] is not None:
+            CAP["epicentros_usgs"].plot(ax=ax, color="#F0E442", marker="*", markersize=60, edgecolor="k", linewidth=0.5, zorder=6)
+        if CAP["sitios_danio"] is not None:
+            CAP["sitios_danio"].plot(ax=ax, color="#0072B2", markersize=7, edgecolor="white", linewidth=0.4, zorder=5)
+        ax.set_xlim(LON0, LON1); ax.set_ylim(LAT0, LAT1)
+        ax.set_aspect(1 / np.cos(np.radians((LAT0 + LAT1) / 2)))
+        ax.tick_params(length=2.5, pad=1.5)
+        ax.set_title(T(clave, idioma), fontsize=7, loc="left", pad=2)
+        etiqueta_panel(ax, "abcdef"[k], dx=-0.11, dy=1.0)
+        cb = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.03, aspect=22)
+        cb.ax.set_title("cm", fontsize=6.5, pad=2); cb.ax.tick_params(labelsize=6, length=2)
+        if k >= 4:
+            ax.set_xlabel(T("longitud", idioma))
+        if k % 2 == 0:
+            ax.set_ylabel(T("latitud", idioma))
     return fig
 
 
 os.makedirs(f"{RAIZ}/04_figuras/borradores", exist_ok=True)
-print(guardar_bilingue(_fig, f"{RAIZ}/04_figuras/borradores/descomposicion_C_vs_L", formatos=("png", "pdf"), dpi=200))
+for _i in ("es", "en"):
+    _f = _fig(_i)
+    print(exportar(_f, f"descomposicion_C_vs_L_{_i}", f"{RAIZ}/04_figuras/borradores", formatos=("pdf", "eps", "tiff", "png")))
+    plt.close(_f)

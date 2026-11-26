@@ -5,7 +5,7 @@ Figura de ubicación bilingüe (ES/EN) · candidata a Figura 1 / Bilingual locat
 (a) Regional: fallas activas, epicentros, recuadro de (b).   (b) Costa de La Guaira: 6 sitios de daño, referencias.
 Estilo / style: src/estilo_figuras.py (sin título interno, (a)(b) fuera, Okabe-Ito, SIN Esri / no Esri basemap).
 Lee / reads: <RAIZ>/01_datos_crudos/mapas_base/mapas_base.gpkg (lo crea mapas_base.py / created by mapas_base.py)
-Salida / output: <RAIZ>/04_figuras/borradores/mapa_ubicacion_{es,en}.{png,pdf}
+Salida / output: <RAIZ>/04_figuras/borradores/mapa_ubicacion_{es,en}.{pdf,eps,tiff,png}
 """
 import os
 import sys as _sys
@@ -69,7 +69,7 @@ def _escala(ax, km, loc=(0.04, 0.07)):
     ax.plot([x, x + d], [y, y], color="k", lw=1.6, solid_capstyle="butt", zorder=9,
             path_effects=None)
     ax.text(x + d / 2, y + 0.04 * (y1 - y0), f"{km:g} km", ha="center", va="bottom", fontsize=6, zorder=9,
-            bbox=dict(fc="white", ec="none", pad=0.6, alpha=0.8))
+            bbox=dict(fc="white", ec="none", pad=0.6, alpha=1))
 
 
 def _fondo(ax, ext):
@@ -117,7 +117,7 @@ def _nombres_fallas(ax, ext, min_frac=0.12, size=6, pos=0.5):
         ax.annotate(nom, (g.interpolate(pos, normalized=True).x, g.interpolate(pos, normalized=True).y), ha="center",
                     va="center", rotation=ang, rotation_mode="anchor", fontsize=size, color="#8a3a00", zorder=7,
                     xytext=(0, 4), textcoords="offset points",
-                    bbox=dict(fc="white", ec="none", pad=0.3, alpha=0.75))
+                    bbox=dict(fc="white", ec="none", pad=0.3, alpha=1))
 
 
 def _epicentros(ax, ext, etiquetas=True):
@@ -130,7 +130,7 @@ def _epicentros(ax, ext, etiquetas=True):
             ax.plot(x, y, "*", ms=11, mfc="#F0E442", mec="k", mew=0.6, zorder=8)
             if etiquetas:
                 ax.annotate(r.magnitud, (x, y), xytext=(7, -10), textcoords="offset points", fontsize=7,
-                            fontweight="bold", zorder=9, bbox=dict(fc="white", ec="none", pad=0.6, alpha=0.8))
+                            fontweight="bold", zorder=9, bbox=dict(fc="white", ec="none", pad=0.6, alpha=1))
 
 
 def _mapa(idioma):
@@ -156,12 +156,12 @@ def _mapa(idioma):
     for n, (la, lo, dx, dy, ha) in REFS.items():
         b.plot(lo, la, "^", ms=3.5, mfc="white", mec="k", mew=0.6, zorder=6)
         b.annotate(REFS_TXT[n][idioma], (lo, la), xytext=(dx, dy), textcoords="offset points", ha=ha, va="center",
-                   fontsize=6, zorder=7, bbox=dict(fc="white", ec="none", pad=0.5, alpha=0.8))
+                   fontsize=6, zorder=7, bbox=dict(fc="white", ec="none", pad=0.5, alpha=1))
     for n, (la, lo, dx, dy) in SITIOS.items():
         b.plot(lo, la, "o", ms=4.5, mfc=C["sitio"], mec="white", mew=0.7, zorder=8)
         b.annotate(TXT.get("u_" + n, {}).get(idioma, n), (lo, la), xytext=(dx, dy), textcoords="offset points",
                    ha="center", va="center", fontsize=6.5, zorder=9,
-                   bbox=dict(fc="white", ec="none", pad=0.5, alpha=0.85),
+                   bbox=dict(fc="white", ec="none", pad=0.5, alpha=1),
                    arrowprops=dict(arrowstyle="-", lw=0.5, color="0.2", shrinkA=0, shrinkB=1.5))
     _escala(b, 10); flecha_norte(b, loc=(0.97, 0.80), largo=0.22)
     b.set_xlabel(T("longitud", idioma)); b.set_ylabel(T("latitud", idioma))
@@ -180,7 +180,7 @@ def _mapa(idioma):
 
 for _i in ("es", "en"):
     _f = _mapa(_i)
-    print(exportar(_f, f"mapa_ubicacion_{_i}", FIG, formatos=("png", "pdf")))
+    print(exportar(_f, f"mapa_ubicacion_{_i}", FIG, formatos=("pdf", "eps", "tiff", "png")))
     if _i == "es":
         plt.show()
     plt.close(_f)

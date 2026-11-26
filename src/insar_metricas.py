@@ -57,7 +57,7 @@ TXT.update({
 
 # ---------------------------------------------------------------- inventario de productos
 filas = []
-for banda, sensor, carpeta in (("C", "Sentinel-1", "sentinel1"), ("L", "NISAR", "nisar"), ("L", "UCSD", "ucsd")):
+for banda, origen, carpeta in (("C", "Sentinel-1", "sentinel1"), ("L", "NISAR", "nisar"), ("L", "MOSAICO", "mosaicos"), ("L", "UCSD", "ucsd")):
     for f in sorted(glob.glob(f"{RAIZ}/02_procesados/{carpeta}/*_los_m.tif")):
         pref = f[:-len("_los_m.tif")]; nombre = os.path.basename(pref)
         d = re.findall(r"(20\d{6})", nombre)
@@ -66,16 +66,22 @@ for banda, sensor, carpeta in (("C", "Sentinel-1", "sentinel1"), ("L", "NISAR", 
         ref, sec = pd.Timestamp(d[0]), pd.Timestamp(d[-1])
         track = (re.search(r"_T(\w+?)_", nombre) or [None, ""])[1]
         frame = (re.search(r"_F(\d{3})_", nombre) or [None, ""])[1]
-        fuente = "ucsd" if sensor == "UCSD" else "propio"
-        if sensor == "UCSD":
+        fuente = "ucsd" if origen == "UCSD" else "propio"
+        sensor = origen                      # variable LOCAL: antes se reasignaba la del bucle y los siguientes archivos se mal-etiquetaban
+        if origen == "UCSD":
             sensor = "ALOS-2 (UCSD)" if "ALOS2" in nombre else "NISAR (UCSD)"
+        elif origen == "MOSAICO":
+            sensor = "NISAR mosaico"
+            track = "ASC" if "_ASC_" in nombre else "DESC"
         los_f = f
-        if sensor == "NISAR" and USAR_IONO and os.path.exists(pref + "_los_iono_m.tif"):
+        if origen in ("NISAR",) and USAR_IONO and os.path.exists(pref + "_los_iono_m.tif"):
             los_f = pref + "_los_iono_m.tif"
         if fuente == "ucsd":
             iono = "NO corregida (UCSD)" if "ALOS2" in nombre else "corregida (UCSD, frecuencias A y B)"
-        elif sensor == "Sentinel-1":
+        elif origen == "Sentinel-1":
             iono = "no aplica (banda C); troposfera sin corregir"
+        elif origen == "MOSAICO":
+            iono = "según los productos que lo forman (ver mosaico_costuras)"
         else:
             iono = "corregida (división espectral, GUNW)" if los_f != f else "NO corregida (sin capa ionosférica)"
         rel = "PRE" if sec < SISMO else ("POST" if ref >= SISMO else "CO")

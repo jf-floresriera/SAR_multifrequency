@@ -81,6 +81,26 @@ def estado(raiz):
     return pd.DataFrame(filas)
 
 
+FORZAR_SIN_HASH = {"descomp", "mapas_base", "insar_metricas"}   # se repiten una vez si su registro no tiene huella del código / re-run once
+
+
+def _md5(script):
+    import hashlib
+    f = os.path.join(os.path.dirname(os.path.abspath(__file__)), script)
+    return hashlib.md5(open(f, "rb").read()).hexdigest()[:8] if os.path.exists(f) else ""
+
+
+def _desactualizado(h, pid, script):
+    """True si el código del script cambió desde la última ejecución registrada / script changed since the last logged run."""
+    f = h[(h.id == pid) & (h.estado == "ok")]
+    if not len(f):
+        return False                                   # solo en HECHO_PREVIO: se respeta / only in HECHO_PREVIO: respected
+    o = str(f.iloc[-1].origen)
+    if "md5:" in o:
+        return o.split("md5:")[-1].strip() != _md5(script)
+    return pid in FORZAR_SIN_HASH
+
+
 def paso(pid, correr, raiz, version="", forzar=False, confirmar=False, variables=None):
     """Ejecuta un paso salvo que ya esté hecho. `correr` es la función del cuaderno; `variables` se inyectan antes."""
     assert pid in IDS, f"paso desconocido / unknown step: {pid} (válidos / valid: {IDS})"
@@ -88,6 +108,9 @@ def paso(pid, correr, raiz, version="", forzar=False, confirmar=False, variables
     h = leer(raiz)
     hecho = (pid in set(h[h.estado == "ok"].id)) if len(h) else False
     hecho = hecho or pid in HECHO_PREVIO
+    if hecho and not forzar and pid not in SIEMPRE and _desactualizado(h, pid, script):
+        print(f"🔄 {pid}: el código cambió desde la última vez: se repite solo / code changed since the last run: re-running")
+        hecho = False
     if hecho and not forzar and pid not in SIEMPRE:
         print(f"⏭️  {pid}: ya hecho / already done. Use forzar=True para repetir / to repeat.")
         return None
@@ -108,6 +131,6 @@ def paso(pid, correr, raiz, version="", forzar=False, confirmar=False, variables
     finally:
         os.makedirs(os.path.dirname(_ruta(raiz)), exist_ok=True)
         fila = pd.DataFrame([dict(id=pid, fecha=datetime.datetime.now().strftime("%Y-%m-%d %H:%M"), version=version,
-                                  estado=estado_final, origen=origen or script)])
+                                  estado=estado_final, origen=origen or f"{script} md5:{_md5(script)}")])
         fila.to_csv(_ruta(raiz), mode="a", header=not os.path.exists(_ruta(raiz)), index=False)
     return True

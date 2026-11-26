@@ -54,22 +54,25 @@ TXT.update({
 
 # ---------------------------------------------------------------- inventario de productos
 filas = []
-for banda, sensor, carpeta in (("C", "Sentinel-1", "sentinel1"), ("L", "NISAR", "nisar")):
+for banda, sensor, carpeta in (("C", "Sentinel-1", "sentinel1"), ("L", "NISAR", "nisar"), ("L", "UCSD", "ucsd")):
     for f in sorted(glob.glob(f"{RAIZ}/02_procesados/{carpeta}/*_los_m.tif")):
         pref = f[:-len("_los_m.tif")]; nombre = os.path.basename(pref)
         d = re.findall(r"(20\d{6})", nombre)
         if len(d) < 2:
             continue
         ref, sec = pd.Timestamp(d[0]), pd.Timestamp(d[-1])
-        track = (re.search(r"_T(\w+?)_", nombre) or [None, ""])[1] if sensor == "NISAR" else ""
+        track = (re.search(r"_T(\w+?)_", nombre) or [None, ""])[1]
+        fuente = "ucsd" if sensor == "UCSD" else "propio"
+        if sensor == "UCSD":
+            sensor = "ALOS-2 (UCSD)" if "ALOS2" in nombre else "NISAR (UCSD)"
         rel = "PRE" if sec < SISMO else ("POST" if ref >= SISMO else "CO")
-        filas.append(dict(sensor=sensor, banda=banda, track=track, nombre=nombre, pref=pref, ref=ref, sec=sec,
+        filas.append(dict(fuente=fuente, sensor=sensor, banda=banda, track=track, nombre=nombre, pref=pref, ref=ref, sec=sec,
                           linea_base_d=(sec - ref).days, relacion=rel))
 prod = pd.DataFrame(filas)
 if prod.empty:
     raise SystemExit("No hay *_los_m.tif en 02_procesados/{sentinel1,nisar}: ejecute s1_tif y nisar_tif / run s1_tif and nisar_tif first")
-prod = prod.sort_values(["relacion", "banda", "track", "ref"]).reset_index(drop=True)
-print(prod[["sensor", "track", "ref", "sec", "relacion"]].to_string())
+prod = prod.sort_values(["fuente", "relacion", "banda", "track", "ref"]).reset_index(drop=True)
+print(prod[["fuente", "sensor", "track", "ref", "sec", "relacion"]].to_string())
 
 
 def _grilla(win):
@@ -135,7 +138,7 @@ for i, p in prod.iterrows():
     mad = lambda a: float(1.4826 * np.nanmedian(np.abs(a - np.nanmedian(a)))) if a.size else np.nan
     e = _a_ll(p.pref + "_losE.tif", VR); u = _a_ll(p.pref + "_losU.tif", VR)
     met.append(dict(
-        sensor=p.sensor, banda=p.banda, track=p.track, fecha_ref=p.ref.date(), fecha_sec=p.sec.date(),
+        fuente=p.fuente, sensor=p.sensor, banda=p.banda, track=p.track, fecha_ref=p.ref.date(), fecha_sec=p.sec.date(),
         linea_base_dias=p.linea_base_d, relacion_sismo=p.relacion,
         cobertura_pct=round(100 * v.mean(), 1),
         coh_media=round(float(np.nanmean(coh)), 3) if np.isfinite(coh).any() else np.nan,
@@ -149,7 +152,7 @@ for i, p in prod.iterrows():
         mirada_U_media=round(float(np.nanmean(u)), 3) if np.isfinite(u).any() else np.nan,
         producto=p.nombre))
 M = pd.DataFrame(met)
-COLS_EN = {"sensor": "sensor", "banda": "band", "track": "track", "fecha_ref": "ref_date", "fecha_sec": "sec_date",
+COLS_EN = {"fuente": "source", "sensor": "sensor", "banda": "band", "track": "track", "fecha_ref": "ref_date", "fecha_sec": "sec_date",
            "linea_base_dias": "baseline_days", "relacion_sismo": "relation_to_quake", "cobertura_pct": "coverage_pct",
            "coh_media": "mean_coherence", "coh_ge_umbral_pct": f"coh_ge_{COH_MIN}_pct", "los_p2_cm": "los_p2_cm",
            "los_p98_cm": "los_p98_cm", "los_abs_p99_cm": "los_abs_p99_cm",
@@ -177,10 +180,10 @@ def _titulo(p, idioma):
     return f"{p.sensor} ({p.banda}){tr} · {f(p.ref)}→{f(p.sec)} · {T('m_' + p.relacion.lower(), idioma)}"
 
 
-def _fig_mapas(vent, idioma):
+def _fig_mapas(vent, idioma, sub):
     aplicar_estilo(7)
     win = VENT[vent]; lon0, lon1, lat0, lat1 = win
-    n = len(prod); cols = 2; filas_ = int(np.ceil(n / cols))
+    n = len(sub); cols = 2; filas_ = int(np.ceil(n / cols))
     asp = (lon1 - lon0) * np.cos(np.radians((lat0 + lat1) / 2)) / (lat1 - lat0)
     w_ax = 78.0; h_ax = w_ax / asp
     H = filas_ * (h_ax + 9.0) + 16.0
@@ -190,7 +193,7 @@ def _fig_mapas(vent, idioma):
     for k, ax in enumerate(axs.flat):
         if k >= n:
             ax.axis("off"); continue
-        p = prod.iloc[k]
+        p = sub.iloc[k]
         a = _a_ll(p.pref + "_los_m.tif", win) * 100.0
         c = _a_ll(p.pref + "_coh.tif", win)
         if np.isfinite(c).any():
@@ -224,32 +227,69 @@ def _fig_mapas(vent, idioma):
 
 def _fig_perfil(idioma):
     aplicar_estilo(7)
-    fig, ax = plt.subplots(figsize=(180 / 25.4, 70 / 25.4))
+    fig, axs = plt.subplots(2, 1, figsize=(180 / 25.4, 120 / 25.4), sharex=True)
     win = (TRANSECTO_LON - 0.012, TRANSECTO_LON + 0.012, 10.40, 10.74)
     lat = np.linspace(win[3], win[2], int(round((win[3] - win[2]) / DEG)))
-    cols = [OKABE_ITO[k % len(OKABE_ITO)] for k in range(len(prod))] if isinstance(OKABE_ITO, (list, tuple)) else list(OKABE_ITO.values())
-    for k, p in prod.iterrows():
-        a = _a_ll(p.pref + "_los_m.tif", win) * 100.0
-        c = _a_ll(p.pref + "_coh.tif", win)
-        if np.isfinite(c).any():
-            a = np.where(c >= COH_MIN, a, np.nan)
-        with np.errstate(all="ignore"):
-            perf = np.nanmedian(a, axis=1)
-        n_ = min(len(perf), len(lat))
-        ax.plot(lat[:n_], perf[:n_], color=cols[k % len(cols)], lw=0.9, ls="-" if p.banda == "C" else "--",
-                alpha=0.35 if p.relacion == "PRE" else 1.0, label=_titulo(p, idioma))
-    ax.axhline(0, color="0.5", lw=0.5)
-    ax.set_xlabel(T("m_perfil", idioma)); ax.set_ylabel(T("m_perfil_y", idioma))
-    ax.legend(fontsize=5.6, frameon=False, loc="upper left", ncol=1, bbox_to_anchor=(1.0, 1.0))
-    ax.tick_params(length=2.5)
+    pal = list(OKABE_ITO.values()) if isinstance(OKABE_ITO, dict) else list(OKABE_ITO)
+    for ax, grupo, rot in ((axs[0], "propio", "a"), (axs[1], "ucsd", "b")):
+        sub = prod[prod.fuente == grupo].reset_index(drop=True)
+        for k, p in sub.iterrows():
+            a = _a_ll(p.pref + "_los_m.tif", win) * 100.0
+            c = _a_ll(p.pref + "_coh.tif", win)
+            if np.isfinite(c).any():
+                a = np.where(c >= COH_MIN, a, np.nan)
+            with np.errstate(all="ignore"):
+                perf = np.nanmedian(a, axis=1)
+            n_ = min(len(perf), len(lat))
+            ax.plot(lat[:n_], perf[:n_], color=pal[k % len(pal)], lw=0.9, ls="-" if p.banda == "C" else "--",
+                    alpha=0.35 if p.relacion == "PRE" else 1.0, label=_titulo(p, idioma))
+        ax.axhline(0, color="0.5", lw=0.5)
+        ax.set_ylabel(T("m_perfil_y", idioma)); ax.tick_params(length=2.5)
+        ax.legend(fontsize=5.4, frameon=False, loc="upper left", bbox_to_anchor=(1.0, 1.0))
+        etiqueta_panel(ax, rot, dx=-0.06, dy=1.0)
+    axs[1].set_xlabel(T("m_perfil", idioma))
     return fig
 
 
+# ---------------------------------------------------------------- comparación propio vs UCSD (mismo track y par)
+cmp_f = []
+pares = []
+for _, u in prod[(prod.fuente == "ucsd") & prod.sensor.str.startswith("NISAR")].iterrows():
+    q = prod[(prod.fuente == "propio") & (prod.sensor == "NISAR") & (prod.track == u.track) & (prod.ref == u.ref) & (prod.sec == u.sec)]
+    if len(q):
+        pares.append((q.iloc[0], u))
+for q, u in pares:
+    a = cache[q.nombre]; b = cache[u.nombre]
+    v = np.isfinite(a) & np.isfinite(b)
+    if v.sum() < 1000:
+        continue
+    x, y = a[v], b[v]                                  # x = propio, y = UCSD (cm)
+    sl, ic = np.polyfit(x, y, 1)
+    cmp_f.append(dict(track=q.track, par=f"{q.ref.date()}→{q.sec.date()}", n_celdas=int(v.sum()),
+                      sesgo_UCSD_menos_propio_cm=round(float(np.mean(y - x)), 2),
+                      rmse_cm=round(float(np.sqrt(np.mean((y - x) ** 2))), 2),
+                      r2=round(float(np.corrcoef(x, y)[0, 1] ** 2), 3), pendiente=round(float(sl), 3),
+                      dentro_2cm_pct=round(100 * float(np.mean(np.abs(y - x) <= 2)), 1)))
+if cmp_f:
+    C_ = pd.DataFrame(cmp_f)
+    C_.to_csv(f"{OUT}/comparacion_propio_vs_ucsd_es.csv", index=False)
+    C_.rename(columns={"par": "pair", "n_celdas": "n_cells", "sesgo_UCSD_menos_propio_cm": "bias_UCSD_minus_ours_cm",
+                       "pendiente": "slope", "dentro_2cm_pct": "within_2cm_pct"}).to_csv(f"{OUT}/comparacion_propio_vs_ucsd_en.csv", index=False)
+    print("\n=== NUESTRO NISAR vs UCSD (mismo track y par) ===")
+    print(C_.to_string(index=False))
+else:
+    print("\n(sin pares NISAR propio/UCSD con el mismo track y par: ejecute ucsd_los_a_geotiff / no matching pairs)")
+
+# ---------------------------------------------------------------- exportar
+GRUPOS = [("propios", prod[prod.fuente == "propio"]), ("ucsd", prod[prod.fuente == "ucsd"])]
 for idioma in ("es", "en"):
-    for vent in VENT:
-        f = _fig_mapas(vent, idioma)
-        print(exportar(f, f"insar_comparable_{vent}_{idioma}", FIG, formatos=("pdf", "eps", "tiff", "png")))
-        plt.close(f)
+    for gname, sub in GRUPOS:
+        if sub.empty:
+            continue
+        for vent in VENT:
+            f = _fig_mapas(vent, idioma, sub.reset_index(drop=True))
+            print(exportar(f, f"insar_comparable_{gname}_{vent}_{idioma}", FIG, formatos=("pdf", "eps", "tiff", "png")))
+            plt.close(f)
     f = _fig_perfil(idioma)
     print(exportar(f, f"insar_perfil_comparable_{idioma}", FIG, formatos=("pdf", "eps", "tiff", "png")))
     plt.close(f)

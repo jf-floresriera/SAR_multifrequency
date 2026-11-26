@@ -22,12 +22,12 @@ from rasterio.warp import Resampling, reproject
 
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
 from comun import T, TXT
-from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar
+from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar, sin_etiquetas
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 
 RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR")
-LIM = float(globals().get("LIM_MM", 400))
+LIM = float(globals().get("LIM_MM") or 400)       # LIM_MM puede ser None si lo definió otro script
 WIN = globals().get("VENTANA", (-68.20, -66.20, 10.20, 10.85))
 DEG = 0.0008
 ESC = 1000.0
@@ -108,6 +108,7 @@ def _fig(idioma):
                 CTX["sitios_danio"].plot(ax=ax, color="#0072B2", markersize=5, edgecolor="white", linewidth=0.3, zorder=5)
             if CTX.get("epicentros_usgs") is not None:
                 CTX["epicentros_usgs"].plot(ax=ax, color="#F0E442", marker="*", markersize=45, edgecolor="k", linewidth=0.5, zorder=6)
+            sin_etiquetas(ax)
             ax.set_xlim(WIN[0], WIN[1]); ax.set_ylim(WIN[2], WIN[3]); ax.set_aspect(1 / np.cos(np.radians((WIN[2] + WIN[3]) / 2)))
             ax.tick_params(length=2.5, pad=1.5, labelsize=6)
             if i < len(filas) - 1:
@@ -128,6 +129,6 @@ def _fig(idioma):
 
 for idioma in ("es", "en"):
     f = _fig(idioma)
-    print(exportar(f, f"comparacion_modelos_{idioma}", FIG, formatos=("pdf", "eps", "tiff", "png")))
+    print(exportar(f, f"comparacion_modelos_{idioma}", FIG, formatos=("pdf", "tiff", "png")))
     plt.close(f)
 print(f"\nFigura / figure: {FIG}/comparacion_modelos_{{es,en}}.*  (escala ±{LIM:g} mm)")

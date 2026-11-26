@@ -26,7 +26,7 @@ from rasterio.warp import Resampling, reproject
 
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
 from comun import T, TXT
-from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar
+from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar, sin_etiquetas
 import matplotlib.pyplot as plt
 
 RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR")
@@ -185,7 +185,12 @@ for sensor, nombre, pref, ruta, iono in prods:
             ax.set_title(T(k, idioma, c=lam_mm / 2) if k == "q_c" else T(k, idioma), fontsize=6.5, loc="left", pad=2)
             if FALLAS is not None:
                 FALLAS.plot(ax=ax, color="k", lw=0.4)
+            sin_etiquetas(ax)
             ax.set_xlim(ext[0], ext[1]); ax.set_ylim(ext[2], ext[3])
+        for ax in (axs[0, 0], axs[1, 0]):
+            ax.set_ylabel(T("latitud", idioma), fontsize=6.5)
+        for ax in (axs[1, 0], axs[1, 1]):
+            ax.set_xlabel(T("longitud", idioma), fontsize=6.5)
         # (e) histograma de coherencia
         h = axs[2, 0]
         cc = coh[np.isfinite(coh)]

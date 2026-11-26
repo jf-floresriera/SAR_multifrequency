@@ -31,7 +31,7 @@ from rasterio.warp import Resampling, reproject
 
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
 from comun import T, TXT
-from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar
+from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar, sin_etiquetas
 import matplotlib.pyplot as plt
 
 RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR")
@@ -48,6 +48,10 @@ n_x, n_y = int(round((WIN[1] - WIN[0]) / DEG)), int(round((WIN[3] - WIN[2]) / DE
 TR = from_origin(WIN[0], WIN[3], DEG, DEG)
 TXT.update({"mo_a": {"es": "Mosaico LOS (mm)", "en": "Mosaic LOS (mm)"}, "mo_b": {"es": "Producto que aporta cada píxel", "en": "Product supplying each pixel"},
             "mo_c": {"es": "Diferencia en el solape (mm)", "en": "Difference in the overlap (mm)"}})
+
+
+def _corto(n_):
+    return re.sub(r'_20[0-9]{6}.*', '', n_)
 
 
 def a_ll(ruta, metodo=Resampling.bilinear):
@@ -192,14 +196,17 @@ for idioma in ("es", "en"):
         cb = fig.colorbar(im, ax=axs[i, 0], pad=0.01, fraction=0.03); cb.ax.tick_params(labelsize=6, length=2)
         axs[i, 0].set_title(f"{fam_} {direc} · {T('mo_a', idioma)}", fontsize=6.5, loc="left", pad=2)
         axs[i, 1].imshow(np.where(fuente >= 0, fuente, np.nan), extent=ext, cmap="tab10", vmin=0, vmax=9, interpolation="nearest")
-        axs[i, 1].set_title(T("mo_b", idioma) + ": " + "; ".join(f"{k}={n_[6:].split('_20')[0]}" for k, n_ in enumerate(nombres)), fontsize=5.6, loc="left", pad=2)
+        axs[i, 1].set_title(T("mo_b", idioma) + ": " + "; ".join(str(k) + "=" + _corto(n_) for k, n_ in enumerate(nombres)), fontsize=5.6, loc="left", pad=2)
         for ax in axs[i]:
             ax.set_aspect(1 / np.cos(np.radians(10.5))); ax.tick_params(length=2.5, pad=1.5, labelsize=6)
             if FALLAS is not None:
                 FALLAS.plot(ax=ax, color="k", lw=0.4)
+            sin_etiquetas(ax)
             ax.set_xlim(ext[0], ext[1]); ax.set_ylim(ext[2], ext[3])
-        etiqueta_panel(axs[i, 0], "ab"[0] if i == 0 else "c", dx=-0.1, dy=1.0)
-        etiqueta_panel(axs[i, 1], "b" if i == 0 else "d", dx=-0.1, dy=1.0)
+            ax.set_ylabel(T('latitud', idioma) if ax is axs[i, 0] else '', fontsize=6.5)
+            ax.set_xlabel(T('longitud', idioma) if i == n - 1 else '', fontsize=6.5)
+        etiqueta_panel(axs[i, 0], "abcdefghij"[2 * i], dx=-0.1, dy=1.0)
+        etiqueta_panel(axs[i, 1], "abcdefghij"[2 * i + 1], dx=-0.1, dy=1.0)
     fig.subplots_adjust(left=0.07, right=0.98, top=0.94, bottom=0.07, hspace=0.35, wspace=0.2)
     exportar(fig, f"mosaico_nisar_{idioma}", FIG, formatos=("pdf", "png"))
     plt.close(fig)

@@ -26,7 +26,7 @@ from rasterio.warp import Resampling, reproject
 
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
 from comun import T, TXT
-from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar, OKABE_ITO
+from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar, OKABE_ITO, sin_etiquetas
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
@@ -246,6 +246,7 @@ def _fig_mapas(vent, idioma, sub):
             CTX["sitios_danio"].plot(ax=ax, color="#0072B2", markersize=6, edgecolor="white", linewidth=0.4, zorder=5)
         if CTX["epicentros_usgs"] is not None:
             CTX["epicentros_usgs"].plot(ax=ax, color="#F0E442", marker="*", markersize=55, edgecolor="k", linewidth=0.5, zorder=6)
+        sin_etiquetas(ax)
         ax.set_xlim(lon0, lon1); ax.set_ylim(lat0, lat1)
         ax.set_aspect(1 / np.cos(np.radians((lat0 + lat1) / 2)))
         ax.tick_params(length=2.5, pad=1.5, labelsize=6)
@@ -329,9 +330,9 @@ for idioma in ("es", "en"):
             continue
         for vent in VENT:
             f = _fig_mapas(vent, idioma, sub.reset_index(drop=True))
-            print(exportar(f, f"insar_comparable_{gname}_{vent}_{idioma}", FIG, formatos=("pdf", "eps", "tiff", "png")))
+            print(exportar(f, f"insar_comparable_{gname}_{vent}_{idioma}", FIG, formatos=("pdf", "tiff", "png")))
             plt.close(f)
     f = _fig_perfil(idioma)
-    print(exportar(f, f"insar_perfil_comparable_{idioma}", FIG, formatos=("pdf", "eps", "tiff", "png")))
+    print(exportar(f, f"insar_perfil_comparable_{idioma}", FIG, formatos=("pdf", "tiff", "png")))
     plt.close(f)
 print(f"\nTabla / table: {OUT}/metricas_insar_{{es,en}}.csv · figuras / figures: {FIG}/insar_*_{{es,en}}.*")

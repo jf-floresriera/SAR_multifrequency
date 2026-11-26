@@ -3,6 +3,8 @@
 > 🇪🇸 Estado real del proyecto **verificado el 26-nov-2026** contra el Drive del autor y los cuadernos de Colab. Complementa `PROYECTO.md` (que describe el plan), [`CORRECCIONES_INSAR.md`](CORRECCIONES_INSAR.md) con lo que **de verdad existe**, lo que falta y lo que NO hay que repetir.
 > 🇬🇧 Real project state **verified on 2026-11-26** against the author's Drive and Colab notebooks. Complements `PROYECTO.md` (the plan) with what **actually exists**, what is missing and what must NOT be repeated.
 
+> 📌 **Resumen corto para retomar mañana / short resume-tomorrow summary:** [`RESUMEN_PROCESO_2026-11-26.md`](RESUMEN_PROCESO_2026-11-26.md).
+
 ## 0. ⭐ LEER PRIMERO · Estado al cierre del 26-nov-2026 (tarde) / READ FIRST · State at end of 26 Nov 2026
 
 > 🇪🇸 Para el siguiente agente (el autor cambia de agente/modelo). Lo de abajo (§1–§8) es la foto de la mañana; **§0 manda donde haya contradicción**.

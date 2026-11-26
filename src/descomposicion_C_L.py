@@ -164,7 +164,7 @@ from matplotlib.colors import TwoSlopeNorm
 from rasterio.warp import reproject as _rep, Resampling as _R
 from rasterio.transform import from_origin as _fo
 from pyproj import Transformer as _Tr
-from estilo_figuras import aplicar_estilo, etiqueta_panel, CMAPS, exportar
+from estilo_figuras import aplicar_estilo, etiqueta_panel, CMAPS, exportar, sin_etiquetas
 
 # --- reproyectar a lon/lat para dibujar con coordenadas geográficas y capas de contexto / to lon-lat for context layers
 _t = _Tr.from_crs(GRILLA_EPSG, 4326, always_xy=True)
@@ -218,6 +218,7 @@ def _fig(idioma):
             CAP["epicentros_usgs"].plot(ax=ax, color="#F0E442", marker="*", markersize=60, edgecolor="k", linewidth=0.5, zorder=6)
         if CAP["sitios_danio"] is not None:
             CAP["sitios_danio"].plot(ax=ax, color="#0072B2", markersize=7, edgecolor="white", linewidth=0.4, zorder=5)
+        sin_etiquetas(ax)
         ax.set_xlim(LON0, LON1); ax.set_ylim(LAT0, LAT1)
         ax.set_aspect(1 / np.cos(np.radians((LAT0 + LAT1) / 2)))
         ax.tick_params(length=2.5, pad=1.5)
@@ -235,5 +236,5 @@ def _fig(idioma):
 os.makedirs(f"{RAIZ}/04_figuras/borradores", exist_ok=True)
 for _i in ("es", "en"):
     _f = _fig(_i)
-    print(exportar(_f, f"descomposicion_C_vs_L_{_i}", f"{RAIZ}/04_figuras/borradores", formatos=("pdf", "eps", "tiff", "png")))
+    print(exportar(_f, f"descomposicion_C_vs_L_{_i}", f"{RAIZ}/04_figuras/borradores", formatos=("pdf", "tiff", "png")))
     plt.close(_f)

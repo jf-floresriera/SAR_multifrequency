@@ -82,6 +82,12 @@ def etiqueta_panel(ax, letra, dx=-0.02, dy=1.02):
             fontsize=mpl.rcParams["font.size"] + 1, fontweight="bold")
 
 
+def sin_etiquetas(ax):
+    """GeoPandas (≥ 1.0) pone solo «Geodetic latitude [degree]» en inglés en cada eje al dibujar: se borra y luego se rotulan los ejes que toquen, en ES/EN.
+    GeoPandas auto-labels axes in English: clear them, then label the axes you want in ES/EN."""
+    ax.set_xlabel(""); ax.set_ylabel("")
+
+
 def estirar(arr, p=(2, 98)):
     """Límites por percentiles (ignora NaN). Devuelve (vmin, vmax) / percentile stretch limits."""
     a = np.asarray(arr, dtype=float)

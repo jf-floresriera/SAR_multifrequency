@@ -42,8 +42,8 @@ SITIOS = {  # nombre: (lat, lon, dx, dy en puntos / offsets in points) — escal
     "Catia La Mar": (10.6055, -67.0324, -34, 30), "Playa Grande": (10.6100, -67.0103, 24, 30),
     "La Guaira": (10.6000, -66.9331, -14, -22), "Caraballeda": (10.6122, -66.8519, -4, 30),
     "Tanaguarena": (10.6150, -66.8200, 6, -27), "Naiguatá": (10.6200, -66.7400, 0, 30)}
-REFS = {"Caracas": (10.50, -66.91, 6, -2, "left"), "Aeropuerto SVMI / SVMI airport": (10.60, -66.99, -4, -12, "right"),
-        "Macuto": (10.61, -66.89, -4, -13, "right")}
+REFS = {"Caracas": (10.50, -66.91, 16, -2, "left"), "Aeropuerto SVMI / SVMI airport": (10.60, -66.99, -22, -36, "center"),
+        "Macuto": (10.61, -66.89, -4, -26, "center")}
 REFS_TXT = {"Caracas": {"es": "Caracas", "en": "Caracas"}, "Macuto": {"es": "Macuto", "en": "Macuto"},
             "Aeropuerto SVMI / SVMI airport": {"es": "Aerop. Maiquetía", "en": "Maiquetía airport"}}
 CIUDADES = {"Valencia": (10.18, -68.00), "Puerto Cabello": (10.47, -68.01)}
@@ -156,7 +156,8 @@ def _mapa(idioma):
     for n, (la, lo, dx, dy, ha) in REFS.items():
         b.plot(lo, la, "^", ms=3.5, mfc="white", mec="k", mew=0.6, zorder=6)
         b.annotate(REFS_TXT[n][idioma], (lo, la), xytext=(dx, dy), textcoords="offset points", ha=ha, va="center",
-                   fontsize=6, zorder=7, bbox=dict(fc="white", ec="none", pad=0.5, alpha=1))
+                   fontsize=6, zorder=7, bbox=dict(fc="white", ec="none", pad=0.5, alpha=1),
+                   arrowprops=dict(arrowstyle="-|>", lw=0.6, color="k", mutation_scale=6, shrinkA=0, shrinkB=2))
     for n, (la, lo, dx, dy) in SITIOS.items():
         b.plot(lo, la, "o", ms=4.5, mfc=C["sitio"], mec="white", mew=0.7, zorder=8)
         b.annotate(TXT.get("u_" + n, {}).get(idioma, n), (lo, la), xytext=(dx, dy), textcoords="offset points",

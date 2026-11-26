@@ -159,12 +159,13 @@ def _nombres_fallas(ax, ext, min_frac=0.12, size=6, pos=0.5):
             mejor[nom] = g
     umbral = min_frac * (ext[1] - ext[0])
     for nom, g in mejor.items():
+        pos_n = pos.get(nom, 0.5) if isinstance(pos, dict) else pos
         if g.length < umbral or len(nom) > 16:      # rótulos largos no caben / long names do not fit
             continue
-        p0, p1 = g.interpolate(pos - 0.05, normalized=True), g.interpolate(pos + 0.05, normalized=True)
+        p0, p1 = g.interpolate(pos_n - 0.05, normalized=True), g.interpolate(pos_n + 0.05, normalized=True)
         ang = np.degrees(np.arctan2((p1.y - p0.y), (p1.x - p0.x) * asp))
         ang = ang + 180 if ang > 90 else ang - 180 if ang < -90 else ang
-        ax.annotate(nom, (g.interpolate(pos, normalized=True).x, g.interpolate(pos, normalized=True).y), ha="center",
+        ax.annotate(nom, (g.interpolate(pos_n, normalized=True).x, g.interpolate(pos_n, normalized=True).y), ha="center",
                     va="center", rotation=ang, rotation_mode="anchor", fontsize=size, color="#8a3a00", zorder=7,
                     xytext=(0, 4), textcoords="offset points",
                     bbox=dict(fc="white", ec="none", pad=0.3, alpha=1))
@@ -203,10 +204,6 @@ def _contexto(ax, idioma):
             plt.rcParams["hatch.linewidth"] = 0.5
             # rayada, sin relleno de Venezuela: se distingue del país / hatched, not Venezuela's fill colour
             z.plot(ax=ax, facecolor="white", edgecolor="#8a3a00", hatch="//////", lw=0.5, zorder=3)
-            ax.annotate(T("u_recl", idioma), xy=(-59.6, 5.6), xytext=(-55.4, 10.4), textcoords="data", fontsize=5.5,
-                        ha="center", va="center", color="#8a3a00", zorder=7,
-                        bbox=dict(fc="white", ec="#8a3a00", lw=0.4, pad=1.2),
-                        arrowprops=dict(arrowstyle="-|>", lw=0.6, color="#8a3a00", mutation_scale=6, shrinkA=0, shrinkB=0))
     ax.set_xlim(CTX[0], CTX[1]); ax.set_ylim(CTX[2], CTX[3])
     ax.set_aspect(1 / np.cos(np.radians((CTX[2] + CTX[3]) / 2)))
     for k, (es, en, lo, la) in PAISES.items():
@@ -250,12 +247,13 @@ def _mapa(idioma):
     _contexto(c, idioma); etiqueta_panel(c, "a", dx=-0.17)
 
     # (b) regional
-    _fondo(a, REG); _nombres_fallas(a, REG); _epicentros(a, REG)
+    _fondo(a, REG); _nombres_fallas(a, REG, pos={"San Sebastián": 0.95}); _epicentros(a, REG)
     for n, (la, lo) in CIUDADES.items():
         a.plot(lo, la, "s", ms=3, mfc="white", mec="k", mew=0.6, zorder=6)
-        a.annotate(n, (lo, la), xytext=(4, -9), textcoords="offset points", fontsize=6, zorder=7)
+        a.annotate(n, (lo, la), xytext=(4, -9), textcoords="offset points", fontsize=6, zorder=9,
+                   bbox=dict(fc="white", ec="none", pad=0.8, alpha=1))
     a.add_patch(Rectangle((ZOOM[0], ZOOM[2]), ZOOM[1] - ZOOM[0], ZOOM[3] - ZOOM[2], fill=False, ec="k", lw=0.8, zorder=7))
-    a.annotate("(c)", (ZOOM[0], ZOOM[2]), xytext=(-3, -9), ha="right", textcoords="offset points", fontsize=7, fontweight="bold")
+    a.annotate("(c)", (ZOOM[0], ZOOM[3]), xytext=(-2, 3), ha="right", textcoords="offset points", fontsize=7, fontweight="bold")
     _escala(a, 50); flecha_norte(a, loc=(0.96, 0.40), largo=0.14)
     a.set_xlabel(T("longitud", idioma)); a.set_ylabel(T("latitud", idioma))
     etiqueta_panel(a, "b", dx=-0.1)

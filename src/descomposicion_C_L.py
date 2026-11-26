@@ -136,9 +136,10 @@ def valor_en(arr, tr, x, y, ventana=2):
 
 
 import glob
-# --- NISAR: 2 ascendentes (061A, 162A) + 1 descendente (126D)
+# --- NISAR: 2 ascendentes (061A, 162A) + descendentes (054D, 126D); cada píxel usa las pasadas válidas que tenga (≥ 2).
+# 126D salió casi sin coherencia (0,2 %) en el QC del 26-nov; 054D sí tiene señal. Cambiar con NISAR_TRACKS=(...)
 pref_n = sorted({p.rsplit("_los_m.tif", 1)[0] for p in glob.glob(f"{RAIZ}/02_procesados/nisar/*_los_m.tif")
-                 if any(t in p for t in ("T061A", "T162A", "T126D"))})
+                 if any(t in p for t in globals().get("NISAR_TRACKS", ("T061A", "T162A", "T054D", "T126D")))})
 print("NISAR:", [os.path.basename(p) for p in pref_n])
 E_L, U_L, tr = descomponer(pref_n, "NISAR_L", f"{RAIZ}/02_procesados/descomposicion")
 

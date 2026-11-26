@@ -12,6 +12,9 @@ Qué hace / what it does (por dirección, ASC y DESC):
      o, si no hay solape, la mediana de su campo lejano (> 20 km de fallas) si existe; si no, queda SIN referenciar y se avisa;
   3) en cada píxel toma el valor del producto con MAYOR coherencia;
   4) reporta por pareja: píxeles de solape, desfase aplicado (mm), RMS y MAD de la diferencia en el solape (= calidad de la costura).
+PROCEDENCIA: se conservan los valores individuales de cada producto y se escribe mosaico_procedencia_{es,en}.csv (fechas, línea base, días posteriores al sismo,
+vector de mirada medio, % de píxeles aportados, desfase aplicado) y el ráster *_fuente.tif (id del producto de cada píxel). Un mosaico NO es un
+interferograma único: mezcla ventanas de fechas distintas (distinta cantidad de días tras el sismo), geometrías algo distintas y atmósferas distintas.
 IMPORTANTE: el mosaico es para VER y comparar (misma ventana, misma escala). Para Este/Vertical se siguen usando los productos SEPARADOS
 (cada uno con su vector de mirada), no el mosaico.
 Salida: <RAIZ>/02_procesados/mosaicos/NISAR_MOSAICO_<ASC|DESC>_<ref>_<sec>_{los_m,coh}.tif, tabla mosaico_costuras_{es,en}.csv y figura en 04_figuras/borradores.
@@ -49,6 +52,12 @@ TR = from_origin(WIN[0], WIN[3], DEG, DEG)
 TXT.update({"mo_a": {"es": "Mosaico LOS (mm)", "en": "Mosaic LOS (mm)"}, "mo_b": {"es": "Producto que aporta cada píxel", "en": "Product supplying each pixel"},
             "mo_c": {"es": "Diferencia en el solape (mm)", "en": "Difference in the overlap (mm)"},
             "mo_leyenda": {"es": "Color = producto que aporta el píxel", "en": "Colour = product supplying the pixel"}})
+
+
+def _f(s8, idioma):
+    mes = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"]
+    en = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    return f"{int(s8[6:8])} {(mes if idioma == 'es' else en)[int(s8[4:6]) - 1]}"
 
 
 def _corto(n_):
@@ -121,6 +130,7 @@ if PROD.empty:
 
 filas = []
 resumen = {}
+prov = []          # procedencia: qué producto, fechas, geometría y aporte tiene cada pieza del mosaico / provenance of every mosaic piece
 for (fam_, direc), G in PROD.groupby(["fam", "dir"]):
     datos = []
     for _, p in G.iterrows():
@@ -171,9 +181,38 @@ for (fam_, direc), G in PROD.groupby(["fam", "dir"]):
     base = f"{slug}_MOSAICO_{direc}_{f0}_{f1}"
     escribir(np.where(np.isfinite(mos), mos / ESC, np.nan), f"{OUT}/{base}_los_m.tif")
     escribir(np.where(cohm >= 0, cohm, np.nan), f"{OUT}/{base}_coh.tif")
+    # --- procedencia: un mosaico NO es un interferograma único; cada pieza tiene sus fechas, su línea base, su geometría y su desfase
+    # --- provenance: a mosaic is NOT a single interferogram; every piece keeps its own dates, baseline, look geometry and offset
+    info = []
+    n_val = max(int((fuente >= 0).sum()), 1)
+    escribir(np.where(fuente >= 0, fuente, np.nan), f"{OUT}/{base}_fuente.tif")
+    for k, d in enumerate(datos):
+        pp = d["p"]
+        e_ = a_ll(pp.pref + "_losE.tif"); u_ = a_ll(pp.pref + "_losU.tif")
+        fr = re.search(r"_F(\d{3})_", pp.nombre)
+        d0, d1 = pd.Timestamp(pp.ref), pd.Timestamp(pp.sec)
+        fila_c = next((f_ for f_ in filas if f_["producto"] == pp.nombre), {})
+        info.append(dict(nombre=pp.nombre, ref=pp.ref, sec=pp.sec, dias=(d1 - d0).days))
+        prov.append(dict(mosaico=base, id_en_mosaico=k, producto=pp.nombre, familia=fam_, direccion=direc, track=pp.track,
+                         frame=fr.group(1) if fr else "", fecha_ref=d0.date(), fecha_sec=d1.date(), linea_base_dias=(d1 - d0).days,
+                         dias_post_sismo_en_la_ventana=max((d1 - pd.Timestamp("2026-06-24")).days, 0),
+                         mirada_E_media=round(float(np.nanmean(e_)), 3) if np.isfinite(e_).any() else np.nan,
+                         mirada_U_media=round(float(np.nanmean(u_)), 3) if np.isfinite(u_).any() else np.nan,
+                         pct_pixeles_del_mosaico=round(100 * float((fuente == k).sum()) / n_val, 1),
+                         desfase_aplicado_mm=fila_c.get("desfase_aplicado_mm", np.nan), metodo_desfase=fila_c.get("metodo", "")))
     if len(datos) >= 2:
-        resumen[(fam_, direc)] = (mos, fuente, [d["p"].nombre for d in datos], base)
+        resumen[(fam_, direc)] = (mos, fuente, [d["p"].nombre for d in datos], base, info)
 
+PR = pd.DataFrame(prov)
+PR.to_csv(f"{OUT}/mosaico_procedencia_es.csv", index=False)
+PR.rename(columns={"mosaico": "mosaic", "id_en_mosaico": "id_in_mosaic", "producto": "product", "familia": "family", "direccion": "direction",
+                   "fecha_ref": "ref_date", "fecha_sec": "sec_date", "linea_base_dias": "baseline_days",
+                   "dias_post_sismo_en_la_ventana": "days_after_quake_in_window", "mirada_E_media": "look_E_mean", "mirada_U_media": "look_U_mean",
+                   "pct_pixeles_del_mosaico": "pct_of_mosaic_pixels", "desfase_aplicado_mm": "applied_offset_mm",
+                   "metodo_desfase": "offset_method"}).to_csv(f"{OUT}/mosaico_procedencia_en.csv", index=False)
+print("\n=== PROCEDENCIA DE CADA PIEZA / PROVENANCE ===")
+print(PR[["mosaico", "producto", "fecha_ref", "fecha_sec", "linea_base_dias", "dias_post_sismo_en_la_ventana", "mirada_E_media", "mirada_U_media",
+          "pct_pixeles_del_mosaico"]].to_string(index=False))
 M = pd.DataFrame(filas)
 M.to_csv(f"{OUT}/mosaico_costuras_es.csv", index=False)
 M.rename(columns={"familia": "family", "direccion": "direction", "producto": "product", "rol": "role", "solape_pix": "overlap_px", "desfase_aplicado_mm": "applied_offset_mm",
@@ -189,7 +228,7 @@ for idioma in ("es", "en"):
     if n == 0:
         break
     fig, axs = plt.subplots(n, 2, figsize=(180 / 25.4, (36 * n + 14) / 25.4), squeeze=False)
-    for i, ((fam_, direc), (mos, fuente, nombres, base)) in enumerate(resumen.items()):
+    for i, ((fam_, direc), (mos, fuente, nombres, base, info)) in enumerate(resumen.items()):
         v = mos[np.isfinite(mos)]
         lim = max(float(np.percentile(np.abs(v), 99)) if v.size else 100.0, 20.0)
         ext = [WIN[0], WIN[1], WIN[2], WIN[3]]
@@ -202,7 +241,7 @@ for idioma in ("es", "en"):
         axs[i, 1].imshow(np.where(fuente >= 0, fuente, np.nan), extent=ext, cmap=ListedColormap(paleta[:len(nombres)]),
                          vmin=-0.5, vmax=len(nombres) - 0.5, interpolation="nearest")
         axs[i, 1].set_title(f"{fam_} {direc} · {T('mo_b', idioma)}", fontsize=6.5, loc="left", pad=2)
-        axs[i, 1].legend(handles=[Patch(facecolor=paleta[k], edgecolor="k", linewidth=0.3, label=_corto(n_)) for k, n_ in enumerate(nombres)],
+        axs[i, 1].legend(handles=[Patch(facecolor=paleta[k], edgecolor="k", linewidth=0.3, label=f"{_corto(n_)} · {_f(info[k]['ref'], idioma)}→{_f(info[k]['sec'], idioma)} ({info[k]['dias']} d)") for k, n_ in enumerate(nombres)],
                          loc="lower left", fontsize=5.2, frameon=True, framealpha=1, edgecolor="0.6", handlelength=1.0, borderpad=0.4,
                          title=T("mo_leyenda", idioma), title_fontsize=5.2)
         for ax in axs[i]:

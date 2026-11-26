@@ -43,7 +43,7 @@ Frames de NISAR que se sobrescribían (solo se analizaba la mitad de cada track)
 | `qc/qc_<producto>_{es,en}` | ✅ → suplemento |
 
 ## 7. Para mañana, en orden / To do tomorrow, in order
-1. Celda #1 (git pull) → `descomp` (con `forzar=True`) → `auditoria` → `qc` → `mosaico` → `comparacion` → `insar_metricas`. Revisar la **sección «BANDERAS»** de `auditoria` (¿el GUNW ya aplicó troposfera/mareas?).
+1. Celda #1 (git pull) → `descomp` (con `forzar=True`) → `auditoria` → `ucsd_los` → **`mosaico` → `qc`** (el QC de los mosaicos necesita que el mosaico exista) → `comparacion` → `insar_metricas`. El cuaderno (versión 2026-11-26.7) ya trae ese orden y una celda «Reproducir TODO»: paneles individuales (`qc`, `insar_metricas`) **y** mosaicos (`mosaico`, `comparacion`). Revisar la **sección «BANDERAS»** de `auditoria` (¿el GUNW ya aplicó troposfera/mareas?).
 2. **Costuras de NISAR ASC** (RMS 147–171 mm vs MAD 3–33): usar `_concomp.tif` para enmascarar/revisar saltos de 2π. Ver los mapas de `mosaico`.
 3. **Coordenadas exactas de CCS1** (NGL/IGVSB) → validar con GNSS (dE ≈ −0,464 m): fija el signo y la referencia.
 4. Decidir Sentinel-1 **T106A** (1 trabajo HyP3 nuevo; solo si se quiere comparar toda la ruptura) y ALOS-2 (UCSD citado como externo, sin corrección ionosférica; opcional pedir a JAXA/UCSD).

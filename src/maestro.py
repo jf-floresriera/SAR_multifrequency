@@ -28,6 +28,7 @@ PASOS = [
     ("s1_tif",      "C InSAR",      "s1_hyp3_a_geotiff.py",         "Sentinel-1 HyP3 → GeoTIFF (LOS, coherencia)",        "Sentinel-1 HyP3 → GeoTIFF (LOS, coherence)"),
     ("descomp",     "C InSAR",      "descomposicion_C_L.py",        "Este/Vertical C y L, L − C, validación GNSS",        "East/Up C and L, L − C, GNSS validation"),
     ("danio_ref",   "D Daño",       "danio_referencia.py",          "Daño de referencia HOTOSM + Copernicus EMS",         "Reference damage HOTOSM + Copernicus EMS"),
+    ("vantor",      "D Daño",       "vantor_buscar.py",             "Óptico ~0,4 m ANTES/DESPUÉS (Vantor abierto) por sitio",  "~0.4 m optical PRE/POST (Vantor open data) per site"),
     ("danio_sitios", "D Daño",      "umbra_planet_sitios.py",       "Umbra × Planet por sitio (Fig. 8 y suplemento)",     "Umbra × Planet per site (Fig. 8 and supplement)"),
     ("exportar",    "E Salida",     "exportar_figuras_github.py",   "Preparar figuras para GitHub (sin Planet/Esri)",     "Prepare figures for GitHub (no Planet/Esri)"),
 ]

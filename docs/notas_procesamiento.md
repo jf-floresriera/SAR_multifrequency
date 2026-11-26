@@ -21,6 +21,8 @@
 | 2026-11-19 | Zonas de contraste / contrast zones | dañada = máx. edificios destruidos/dañados en 100 m; sana = 200–900 m, sin dañados a < 150 m | Comparar respuesta radar/óptica dañado vs sano / compare radar-optical response |
 | 2026-11-19 | Acercamiento / zoom | 400 m (antes 300 m), escala 100 m | Mejor legibilidad / better legibility |
 | 2026-11-19 | Daño HOTOSM: archivos usados / files used | `<zona>_damage_polygons.geojson` (fusión fAIr/Microsoft) + `venezuela_validated_damage.geojson`; zonas Catia La Mar, La Guaira, Caraballeda, Naiguatá, Carayaca; recorte a la costa de La Guaira | Evita duplicados y colapso de memoria; etiquetas xView2 (no-/minor-/major-damage, destroyed) / avoids duplicates and memory crash |
+| 2026-11-26 | Anti-duplicados HyP3 / HyP3 anti-duplicates | clave = par de escenas + tipo (`src/registro_datos.py`) | Antes se comparaba el nombre; 033A (`Sismo_LaGuaira_S1_Path33`, 5-nov, INT80) habría sido reenviado y 025D se envió 4 veces. Ahora: 1º ZIP en Drive, 2º trabajo vigente con el mismo par, 3º recién enviar. `FORZAR_ENVIO=True` para repetir a propósito |
+| 2026-11-26 | 033A a 80 m / 033A at 80 m | se usa INT80 ya descargado (no reenviar a 40 m) | La grilla común es 80 m; 40 m solo aporta si se analiza escala urbana con C |
 
 ## Pendientes / To do
 - [ ] Coordenadas exactas de CCS1 (ficha NGL / IGVSB)

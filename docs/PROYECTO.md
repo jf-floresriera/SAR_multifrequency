@@ -34,8 +34,8 @@
 
 | Banda / Band | Sensor | Productos / Products | Fechas 2026 | Licencia / Licence | Estado / Status |
 |---|---|---|---|---|---|
-| C (5.55 cm) | Sentinel-1A/1D | HyP3 INSAR_GAMMA 40 m + look vectors: **025D** (18→25 jun), **033A** (18→25 jun) | | Copernicus | 025D ✅ · 033A ⏳ enviado 19-nov |
-| L (23.8 cm) | NISAR | GUNW cosísmicos: **061A** (18→30 jun), **162A** (13→25 jun), **126D** (22 jun→4 jul), 054D | | NASA | 3 descargados, faltan 3 |
+| C (5.55 cm) | Sentinel-1A/1D | HyP3 INSAR_GAMMA 40 m + look vectors: **025D** (18→25 jun), **033A** (18→25 jun) | | Copernicus | 025D ✅ (40 m, 3 copias; usar 1) · 033A ✅ ya descargado a 80 m (5-nov; NO reenviar) |
+| L (23.8 cm) | NISAR | GUNW cosísmicos: **061A** (18→30 jun), **162A** (13→25 jun), **126D** (22 jun→4 jul), 054D | | NASA | 061A, 162A y 126D ✅ en Drive (2,3 GB c/u); 054D no cubre La Guaira (0 %), no se necesita |
 | L (23.8 cm) | ALOS-2 | ScanSAR L1.1 (JAXA liberó 3-jul-2026; espejo ASF) | desde 30 jun | JAXA | ⏳ buscar |
 | X (3.1 cm) | Umbra | 26 spotlight GEC/SICD/SIDD (post-evento, sin geometría repetida → solo amplitud) | 26 jun → 2 jul | CC BY 4.0 | inventariado |
 | Óptico | Planet SkySat/PlanetScope | 17 post + mosaico Q1-2026 (pre) | 26–28 jun | **CC BY-NC 4.0** (no redistribuir) | URLs resueltas |
@@ -112,8 +112,8 @@ Lista oficial / official checklist: [`manuscrito/CHECKLIST_SRL.md`](../manuscrit
 ## 6. Estado y siguientes pasos / Status and next steps (2026-11-19)
 
 - [x] Inventario de los 4 sensores · [x] NISAR cosísmicos identificados · [x] 025D 40 m descargado · [x] Umbra × Planet v1–v2 · [x] Repositorio, logs, salidas ES/EN
-- [ ] 033A 40 m (enviado a HyP3 el 19-nov) → descargar con `hyp3_estado.py`
-- [ ] Descargar NISAR restantes y GEC Umbra (`descargas.py`)
+- [x] 033A: ya existe a 80 m en Drive (no reenviar)
+- [x] NISAR 061A/162A/126D descargados · [ ] GEC Umbra (`descargas.py`)
 - [ ] `mapas_base.py` → Fig. 1
 - [ ] Notebook 03: LOS → Este/Vertical C vs L, validación GNSS (coordenadas CCS1)
 - [ ] ALOS-2 ScanSAR

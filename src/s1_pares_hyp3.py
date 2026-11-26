@@ -42,14 +42,17 @@ print(pares.to_string(index=False))
 if ENVIAR_HYP3:
     import hyp3_sdk
     hyp3 = hyp3_sdk.HyP3(username=usuario, password=clave)
-    existentes = {j.name for j in hyp3.find_jobs()}
+    from registro_datos import trabajos_por_par, decidir_envio
+    FORZAR = globals().get("FORZAR_ENVIO", False)   # solo para repetir a propósito / only to deliberately repeat
+    DESTINO = "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR/01_datos_crudos/sentinel1_hyp3"
+    existentes = trabajos_por_par(hyp3)             # por PAR de escenas, no por nombre / by scene PAIR, not name
     lote = hyp3_sdk.Batch()
     for _, p in pares.iterrows():
         nombre = f"S1_{p.track}_cosismico"
-        if nombre in existentes:
-            print("ya enviado / already submitted:", nombre); continue
+        accion, job, motivo = decidir_envio(existentes, p.ref, p.sec, DESTINO)
+        if accion != "enviar" and not FORZAR:
+            print(f"NO se envía / not submitted: {nombre} -> {motivo}"); continue
         lote += hyp3.submit_insar_job(p.ref, p.sec, name=nombre, looks="10x2", include_inc_map=True,
                                       include_dem=True, include_look_vectors=True)
+        print("enviado / submitted:", nombre)
     print(lote)
-    for nombre in (f"S1_{t}_cosismico" for t in pares.track):
-        print(nombre, "->", hyp3.find_jobs(name=nombre))

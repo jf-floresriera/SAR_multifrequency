@@ -40,9 +40,25 @@ def guardar(gdf, capa):
 # 1) Límites administrativos (geoBoundaries) -------------------------------------------
 for nivel, capa in (("ADM0", "venezuela_pais"), ("ADM1", "venezuela_estados"), ("ADM2", "venezuela_municipios")):
     try:
-        meta = requests.get(f"https://www.geoboundaries.org/api/current/gbOpen/VEN/{nivel}/", headers=H, timeout=60).json()
-        url = meta.get("gjDownloadURL") or meta.get("simplifiedGeometryGeoJSON")
-        g = gpd.read_file(url).to_crs(4326)
+        # 403 = el servidor rechaza el lector por defecto de geopandas: bajar con requests + User-Agent
+        # 403 = server rejects geopandas' default reader: download with requests + User-Agent
+        import io
+        cand = []
+        try:
+            meta = requests.get(f"https://www.geoboundaries.org/api/current/gbOpen/VEN/{nivel}/", headers=H, timeout=60).json()
+            cand += [meta.get("gjDownloadURL"), meta.get("simplifiedGeometryGeoJSON")]
+        except Exception as e:
+            print(f"   (API geoBoundaries: {e})")
+        cand.append(f"https://raw.githubusercontent.com/wmgeolab/geoBoundaries/main/releaseData/gbOpen/VEN/{nivel}/geoBoundaries-VEN-{nivel}.geojson")
+        g = url = None
+        for u in [c for c in cand if c]:
+            try:
+                r = requests.get(u, headers=H, timeout=120); r.raise_for_status()
+                g = gpd.read_file(io.BytesIO(r.content)).to_crs(4326); url = u; break
+            except Exception as e:
+                print(f"   {u[:70]}… → {e}")
+        if g is None:
+            raise RuntimeError("ninguna URL de geoBoundaries respondió / no geoBoundaries URL worked")
         guardar(g, capa)
         if nivel == "ADM2":
             guardar(g[g.intersects(AREA)], "municipios_area_estudio")

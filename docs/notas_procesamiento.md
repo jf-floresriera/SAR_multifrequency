@@ -28,3 +28,6 @@
 - [ ] Coordenadas exactas de CCS1 (ficha NGL / IGVSB)
 - [ ] ALOS-2 ScanSAR L1.1: descargar (ASF/JAXA) y procesar con GMTSAR o ISCE2
 - [ ] Planet: confirmar con la revista la compatibilidad CC BY-NC vs. acceso abierto CC-BY
+
+
+| 2026-11-26 | **Ionosfera (banda L)** | `nisar_gunw_a_geotiff.py` resta la `ionospherePhaseScreen` del GUNW (división espectral, frecuencias A y B) y guarda `*_los_iono_m.tif`; `descomposicion_C_L.py` e `insar_metricas.py` la usan por defecto (`USAR_IONO=True`). Si falta, el título del mapa y la tabla dicen «SIN corr. iono.». ALOS-2 de UCSD NO está corregido (lo declaran los autores). Banda C: ionosfera despreciable, troposfera sin corregir (R² fase–elevación ≈ 0,25). | **Ionosphere (L-band):** NISAR GUNW ionosphere screen is subtracted and `*_los_iono_m.tif` saved; downstream scripts use it by default. If missing, the map title and table state "NO iono. corr.". UCSD ALOS-2 is NOT corrected (authors say so). C-band: ionosphere negligible, troposphere uncorrected. |

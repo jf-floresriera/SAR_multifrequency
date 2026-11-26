@@ -22,6 +22,22 @@ XMIN, XMAX, YMIN, YMAX = 640000, 790000, 1140000, 1200000   # UTM 19N: Yumare..G
 COH_MIN = 0.3
 
 
+USAR_IONO = globals().get("USAR_IONO", True)    # NISAR: usar *_los_iono_m.tif (división espectral del GUNW) si existe
+
+
+def _ruta_los(pref):
+    """OBSERVACIÓN: la ionosfera DEBE corregirse en banda L (NISAR/ALOS-2). Se usa la capa de pantalla ionosférica del GUNW
+    (frecuencias A y B) cuando existe; si no, se avisa. / Ionosphere MUST be corrected in L-band; uses the GUNW screen when present."""
+    c = f"{pref}_los_iono_m.tif"
+    if USAR_IONO and os.path.exists(c):
+        print(f"   ionosfera CORREGIDA / ionosphere CORRECTED: {os.path.basename(pref)}")
+        return c
+    if "NISAR" in os.path.basename(pref):
+        print(f"   [!] SIN corrección ionosférica / NO ionospheric correction: {os.path.basename(pref)} "
+              "(falta *_los_iono_m.tif: repita nisar_tif con forzar=True / missing: re-run nisar_tif)")
+    return f"{pref}_los_m.tif"
+
+
 def a_grilla(ruta, metodo=Resampling.bilinear):
     n_x, n_y = int((XMAX - XMIN) / RES), int((YMAX - YMIN) / RES)
     dst = np.full((n_y, n_x), np.nan, dtype="float32")
@@ -39,7 +55,7 @@ def descomponer(pares, nombre_banda, salida):
     os.makedirs(salida, exist_ok=True)
     G, d = [], []
     for pref in pares:
-        los, tr = a_grilla(f"{pref}_los_m.tif")
+        los, tr = a_grilla(_ruta_los(pref))
         coh, _ = a_grilla(f"{pref}_coh.tif")
         e, _ = a_grilla(f"{pref}_losE.tif"); u, _ = a_grilla(f"{pref}_losU.tif")
         los[coh < COH_MIN] = np.nan

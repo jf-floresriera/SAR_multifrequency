@@ -34,6 +34,7 @@ from matplotlib.colors import TwoSlopeNorm
 RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR")
 COH_MIN = globals().get("COH_MIN", 0.3)
 LIM_CM = globals().get("LIM_CM", None)
+USAR_IONO = globals().get("USAR_IONO", True)
 TRANSECTO_LON = globals().get("TRANSECTO_LON", -66.95)
 SISMO = pd.Timestamp("2026-06-24")
 OUT = f"{RAIZ}/02_procesados/metricas_insar"
@@ -65,8 +66,17 @@ for banda, sensor, carpeta in (("C", "Sentinel-1", "sentinel1"), ("L", "NISAR", 
         fuente = "ucsd" if sensor == "UCSD" else "propio"
         if sensor == "UCSD":
             sensor = "ALOS-2 (UCSD)" if "ALOS2" in nombre else "NISAR (UCSD)"
+        los_f = f
+        if sensor == "NISAR" and USAR_IONO and os.path.exists(pref + "_los_iono_m.tif"):
+            los_f = pref + "_los_iono_m.tif"
+        if fuente == "ucsd":
+            iono = "NO corregida (UCSD)" if "ALOS2" in nombre else "corregida (UCSD, frecuencias A y B)"
+        elif sensor == "Sentinel-1":
+            iono = "no aplica (banda C); troposfera sin corregir"
+        else:
+            iono = "corregida (división espectral, GUNW)" if los_f != f else "NO corregida (sin capa ionosférica)"
         rel = "PRE" if sec < SISMO else ("POST" if ref >= SISMO else "CO")
-        filas.append(dict(fuente=fuente, sensor=sensor, banda=banda, track=track, nombre=nombre, pref=pref, ref=ref, sec=sec,
+        filas.append(dict(los=los_f, iono=iono, fuente=fuente, sensor=sensor, banda=banda, track=track, nombre=nombre, pref=pref, ref=ref, sec=sec,
                           linea_base_d=(sec - ref).days, relacion=rel))
 prod = pd.DataFrame(filas)
 if prod.empty:
@@ -128,7 +138,7 @@ cache = {}
 met = []
 dist = _dist_falla_km(VR)
 for i, p in prod.iterrows():
-    los = _a_ll(p.pref + "_los_m.tif", VR) * 100.0                      # cm
+    los = _a_ll(p.los, VR) * 100.0                      # cm
     coh = _a_ll(p.pref + "_coh.tif", VR)
     if np.isfinite(coh).any():
         los = np.where(coh >= COH_MIN, los, np.nan)
@@ -138,7 +148,7 @@ for i, p in prod.iterrows():
     mad = lambda a: float(1.4826 * np.nanmedian(np.abs(a - np.nanmedian(a)))) if a.size else np.nan
     e = _a_ll(p.pref + "_losE.tif", VR); u = _a_ll(p.pref + "_losU.tif", VR)
     met.append(dict(
-        fuente=p.fuente, sensor=p.sensor, banda=p.banda, track=p.track, fecha_ref=p.ref.date(), fecha_sec=p.sec.date(),
+        ionosfera=p.iono, fuente=p.fuente, sensor=p.sensor, banda=p.banda, track=p.track, fecha_ref=p.ref.date(), fecha_sec=p.sec.date(),
         linea_base_dias=p.linea_base_d, relacion_sismo=p.relacion,
         cobertura_pct=round(100 * v.mean(), 1),
         coh_media=round(float(np.nanmean(coh)), 3) if np.isfinite(coh).any() else np.nan,
@@ -152,7 +162,7 @@ for i, p in prod.iterrows():
         mirada_U_media=round(float(np.nanmean(u)), 3) if np.isfinite(u).any() else np.nan,
         producto=p.nombre))
 M = pd.DataFrame(met)
-COLS_EN = {"fuente": "source", "sensor": "sensor", "banda": "band", "track": "track", "fecha_ref": "ref_date", "fecha_sec": "sec_date",
+COLS_EN = {"ionosfera": "ionosphere", "fuente": "source", "sensor": "sensor", "banda": "band", "track": "track", "fecha_ref": "ref_date", "fecha_sec": "sec_date",
            "linea_base_dias": "baseline_days", "relacion_sismo": "relation_to_quake", "cobertura_pct": "coverage_pct",
            "coh_media": "mean_coherence", "coh_ge_umbral_pct": f"coh_ge_{COH_MIN}_pct", "los_p2_cm": "los_p2_cm",
            "los_p98_cm": "los_p98_cm", "los_abs_p99_cm": "los_abs_p99_cm",
@@ -177,7 +187,10 @@ def _titulo(p, idioma):
     dup = ((prod.ref == p.ref) & (prod.sec == p.sec) & (prod.sensor == p.sensor)).sum() > 1
     if dup and not p.track:
         tr = f" #{p.nombre[-4:]}"        # varios productos del mismo par (p. ej. 40 m y 80 m) / several products of the same pair
-    return f"{p.sensor} ({p.banda}){tr} · {f(p.ref)}→{f(p.sec)} · {T('m_' + p.relacion.lower(), idioma)}"
+    aviso = ""
+    if p.iono.startswith("NO"):
+        aviso = " · SIN corr. iono." if idioma == "es" else " · NO iono. corr."
+    return f"{p.sensor} ({p.banda}){tr} · {f(p.ref)}→{f(p.sec)} · {T('m_' + p.relacion.lower(), idioma)}{aviso}"
 
 
 def _fig_mapas(vent, idioma, sub):
@@ -194,7 +207,7 @@ def _fig_mapas(vent, idioma, sub):
         if k >= n:
             ax.axis("off"); continue
         p = sub.iloc[k]
-        a = _a_ll(p.pref + "_los_m.tif", win) * 100.0
+        a = _a_ll(p.los, win) * 100.0
         c = _a_ll(p.pref + "_coh.tif", win)
         if np.isfinite(c).any():
             a = np.where(c >= COH_MIN, a, np.nan)
@@ -234,7 +247,7 @@ def _fig_perfil(idioma):
     for ax, grupo, rot in ((axs[0], "propio", "a"), (axs[1], "ucsd", "b")):
         sub = prod[prod.fuente == grupo].reset_index(drop=True)
         for k, p in sub.iterrows():
-            a = _a_ll(p.pref + "_los_m.tif", win) * 100.0
+            a = _a_ll(p.los, win) * 100.0
             c = _a_ll(p.pref + "_coh.tif", win)
             if np.isfinite(c).any():
                 a = np.where(c >= COH_MIN, a, np.nan)

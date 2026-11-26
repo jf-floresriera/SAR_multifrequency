@@ -92,6 +92,27 @@ for f in sorted(glob.glob(f"{ENTRADA}/*GUNW*.h5")):
                 xi = h[buscar(h, "xCoordinates", p_ion.rsplit('/', 1)[0])][:]
                 yi = h[buscar(h, "yCoordinates", p_ion.rsplit('/', 1)[0])][:]
                 guardar(SIGNO * ion * lam / (4 * np.pi), xi, yi, epsg, f"{SALIDA}/{corto}_iono_m.tif")
+                # Se remuestrea la pantalla ionosférica a la malla de la fase y se resta / resample the screen to the phase grid and subtract
+                try:
+                    from rasterio.warp import reproject, Resampling
+                    from rasterio.transform import from_origin as _fo
+                    dxi, dyi = float(xi[1] - xi[0]), abs(float(yi[1] - yi[0]))
+                    dx_, dy_ = float(x[1] - x[0]), abs(float(y[1] - y[0]))
+                    t_i = _fo(float(xi[0]) - dxi / 2, float(max(yi[0], yi[-1])) + dyi / 2, dxi, dyi)
+                    t_u = _fo(float(x[0]) - dx_ / 2, float(max(y[0], y[-1])) + dy_ / 2, dx_, dy_)
+                    ion_n = ion if float(yi[1] - yi[0]) < 0 else ion[::-1]          # norte arriba / north-up
+                    ion_u = np.full(unw.shape, np.nan, "float32")
+                    unw_n = unw if float(y[1] - y[0]) < 0 else unw[::-1]
+                    ion_u = np.full(unw_n.shape, np.nan, "float32")
+                    reproject(np.where(np.isfinite(ion_n), ion_n, np.nan).astype("float32"), ion_u, src_transform=t_i,
+                              src_crs=f"EPSG:{epsg}", dst_transform=t_u, dst_crs=f"EPSG:{epsg}", src_nodata=np.nan,
+                              dst_nodata=np.nan, resampling=Resampling.bilinear)
+                    corr = SIGNO * (unw_n - ion_u) * lam / (4 * np.pi)
+                    corr = corr if float(y[1] - y[0]) < 0 else corr[::-1]           # al orden original / original order
+                    guardar(corr, x, y, epsg, f"{SALIDA}/{corto}_los_iono_m.tif")
+                    print("   ✓ ionosfera restada tras remuestrear / ionosphere subtracted after resampling")
+                except Exception as e_:
+                    print("   [!] no pude aplicar la ionosfera / could not apply ionosphere:", e_)
 
         # Vectores de mirada (cubo radarGrid: altura × y × x) -> capa más cercana a 0 m
         vec = {}

@@ -81,7 +81,7 @@ def estado(raiz):
     return pd.DataFrame(filas)
 
 
-FORZAR_SIN_HASH = {"descomp", "mapas_base", "insar_metricas"}   # se repiten una vez si su registro no tiene huella del código / re-run once
+FORZAR_SIN_HASH = {"descomp", "mapas_base", "insar_metricas", "nisar_tif"}   # se repiten una vez si su registro no tiene huella del código / re-run once
 
 
 def _md5(script):

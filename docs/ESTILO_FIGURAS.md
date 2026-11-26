@@ -64,3 +64,7 @@ Every map is paired with a profile, histogram or scatter with R², RMSE, n (see 
 🇪🇸 Las figuras de inventario van al suplemento (no cuentan en el límite de 10): S1 línea de tiempo de adquisiciones; S2 huellas por sensor (Sentinel-1, NISAR, ALOS-2, Umbra, Planet); Tabla S1 inventario completo; S3 los 6 sitios de daño; S4 paletas y prueba de gris.
 🇬🇧 Inventory figures go to the supplement (not counted in the 10-figure limit): S1 acquisition timeline; S2 footprints per sensor; Table S1 full inventory; S3 all 6 damage sites; S4 palettes and grey test.
 Nota / Note: los GeoTIFF "visual" de Planet son RGB; **el análisis multiespectral requeriría los productos analíticos (4/8 bandas), aún no inventariados** / Planet "visual" GeoTIFFs are RGB; **multispectral analysis would need the analytic (4/8-band) products, not yet inventoried**.
+
+
+> 🇪🇸 **Suplemento = muchos paneles.** El material suplementario no tiene límite de figuras: usar figuras de **varios paneles** (cuadrículas a–z) para inventario, los 6 sitios de daño, cada geometría LOS (Sentinel-1, NISAR, ALOS-2) y pruebas de sensibilidad; el texto principal queda para los resultados clave (≤ 10 figuras).
+> 🇬🇧 **Supplement = many panels.** The electronic supplement has no figure limit: use **multi-panel** figures (grids a–z) for the inventory, all 6 damage sites, every LOS geometry (Sentinel-1, NISAR, ALOS-2) and sensitivity tests; keep the main text for the key results (≤ 10 figures).

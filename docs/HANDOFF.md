@@ -101,3 +101,7 @@ All have an internal title, A/B/1/2 labels instead of (a)(b), jet palette, Esri 
 ## 8. Master notebook / Cuaderno maestro
 `notebooks/00_Maestro.ipynb` + `src/maestro.py`: one list of steps (`PASOS`); each runs once and is logged in `05_documentacion/pasos_ejecutados.csv` on Drive. Steps already done on 19 Nov are marked ✅ earlier (`HECHO_PREVIO`, with evidence). `P("id", forzar=True)` repeats a step; `hyp3_envio` is locked until `confirmar=True`.
 🇪🇸 Un solo cuaderno: cada paso corre una vez y queda registrado en Drive; los hechos el 19-nov figuran como previos; `hyp3_envio` queda bloqueado hasta `confirmar=True`.
+
+
+> 🇪🇸 **Suplemento = muchos paneles.** El material suplementario no tiene límite de figuras: usar figuras de **varios paneles** (cuadrículas a–z) para inventario, los 6 sitios de daño, cada geometría LOS (Sentinel-1, NISAR, ALOS-2) y pruebas de sensibilidad; el texto principal queda para los resultados clave (≤ 10 figuras).
+> 🇬🇧 **Supplement = many panels.** The electronic supplement has no figure limit: use **multi-panel** figures (grids a–z) for the inventory, all 6 damage sites, every LOS geometry (Sentinel-1, NISAR, ALOS-2) and sensitivity tests; keep the main text for the key results (≤ 10 figures).

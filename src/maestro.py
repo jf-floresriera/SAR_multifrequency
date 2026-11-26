@@ -27,6 +27,7 @@ PASOS = [
     ("nisar_tif",   "C InSAR",      "nisar_gunw_a_geotiff.py",      "NISAR GUNW → GeoTIFF (LOS, coherencia)",             "NISAR GUNW → GeoTIFF (LOS, coherence)"),
     ("s1_tif",      "C InSAR",      "s1_hyp3_a_geotiff.py",         "Sentinel-1 HyP3 → GeoTIFF (LOS, coherencia)",        "Sentinel-1 HyP3 → GeoTIFF (LOS, coherence)"),
     ("descomp",     "C InSAR",      "descomposicion_C_L.py",        "Este/Vertical C y L, L − C, validación GNSS",        "East/Up C and L, L − C, GNSS validation"),
+    ("insar_metricas", "C InSAR",   "insar_metricas.py",            "Métricas y mapas/perfil COMPARABLES (misma escala y ventana)", "COMPARABLE metrics, maps and profile (same scale and window)"),
     ("danio_ref",   "D Daño",       "danio_referencia.py",          "Daño de referencia HOTOSM + Copernicus EMS",         "Reference damage HOTOSM + Copernicus EMS"),
     ("vantor",      "D Daño",       "vantor_buscar.py",             "Óptico ~0,4 m ANTES/DESPUÉS (Vantor abierto) por sitio",  "~0.4 m optical PRE/POST (Vantor open data) per site"),
     ("danio_sitios", "D Daño",      "umbra_planet_sitios.py",       "Umbra × Planet por sitio (Fig. 8 y suplemento)",     "Umbra × Planet per site (Fig. 8 and supplement)"),

@@ -5,12 +5,12 @@ Métricas y gráficos COMPARABLES de toda la interferometría (Sentinel-1 C, NIS
 Lee todos los *_los_m.tif (+ *_coh.tif) de 02_procesados/{sentinel1,nisar} (los crean s1_tif y nisar_tif) y produce:
   1) Tabla de métricas por producto (CSV ES/EN): fechas, relación con el sismo (PRE/CO/POST), línea base, cobertura,
      coherencia, rango LOS, ruido en campo lejano (> 20 km de fallas), vector de mirada medio.
-  2) Mapas con LA MISMA ventana, LA MISMA escala de color (± cm, común a todos) y el mismo contexto (costa, fallas,
+  2) Mapas con LA MISMA ventana, LA MISMA escala de color (± mm, común a todos) y el mismo contexto (costa, fallas,
      epicentros, sitios): se pueden comparar a ojo entre sensores y geometrías.   Ventanas: regional y costa de La Guaira.
   3) Perfil comparable: mediana LOS vs latitud a lo largo de un transecto común (lon −66,95).
-Convención: LOS en cm, + = acercamiento al satélite. Máscara de coherencia ≥ COH_MIN.
+Convención: LOS en mm, + = acercamiento al satélite. Máscara de coherencia ≥ COH_MIN.
 Salida: <RAIZ>/02_procesados/metricas_insar/ y <RAIZ>/04_figuras/borradores/ (PDF, EPS, TIFF, PNG; ES y EN).
-Variables opcionales (antes de %run -i): COH_MIN, LIM_CM (fija el límite de color), TRANSECTO_LON.
+Variables opcionales (antes de %run -i): COH_MIN, LIM_MM (fija el límite de color, en mm), TRANSECTO_LON.
 """
 import glob
 import os
@@ -33,7 +33,8 @@ from matplotlib.colors import TwoSlopeNorm
 
 RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR")
 COH_MIN = globals().get("COH_MIN", 0.3)
-LIM_CM = globals().get("LIM_CM", None)
+LIM_MM = globals().get("LIM_MM", None)      # límite de color en mm (por defecto, automático)
+ESC = 1000.0                                  # m → mm (los productos están a nivel de mm, como en UCSD)
 USAR_IONO = globals().get("USAR_IONO", True)
 REFERENCIAR = globals().get("REFERENCIAR", True)   # restar la mediana del campo lejano (> 20 km de fallas) a cada producto
 TRANSECTO_LON = globals().get("TRANSECTO_LON", -66.95)
@@ -46,11 +47,11 @@ DEG = 0.0008                                         # ≈ 88 m, de la misma esc
 KM_FALLA = 20.0
 
 TXT.update({
-    "m_los": {"es": "LOS (cm); + = acercamiento al satélite", "en": "LOS (cm); + = toward satellite"},
+    "m_los": {"es": "LOS (mm); + = acercamiento al satélite", "en": "LOS (mm); + = toward satellite"},
     "m_co": {"es": "cosísmico", "en": "coseismic"}, "m_pre": {"es": "pre-sísmico (control)", "en": "pre-seismic (control)"},
     "m_post": {"es": "post-sísmico", "en": "post-seismic"},
     "m_perfil": {"es": "Latitud (°)", "en": "Latitude (°)"},
-    "m_perfil_y": {"es": "LOS mediana (cm)", "en": "Median LOS (cm)"},
+    "m_perfil_y": {"es": "LOS mediana (mm)", "en": "Median LOS (mm)"},
     "m_costa": {"es": "costa", "en": "coast"},
 })
 
@@ -136,11 +137,11 @@ def _dist_falla_km(win):
 # ---------------------------------------------------------------- lectura y métricas
 VR = VENT["region"]
 cache = {}
-OFF = {}                      # desfase de referencia por producto (cm) / reference offset per product (cm)
+OFF = {}                      # desfase de referencia por producto (mm) / reference offset per product (mm)
 met = []
 dist = _dist_falla_km(VR)
 for i, p in prod.iterrows():
-    los = _a_ll(p.los, VR) * 100.0                      # cm
+    los = _a_ll(p.los, VR) * ESC                      # cm
     coh = _a_ll(p.pref + "_coh.tif", VR)
     if np.isfinite(coh).any():
         los = np.where(coh >= COH_MIN, los, np.nan)
@@ -163,34 +164,34 @@ for i, p in prod.iterrows():
         ionosfera=p.iono, fuente=p.fuente, sensor=p.sensor, banda=p.banda, track=p.track, fecha_ref=p.ref.date(), fecha_sec=p.sec.date(),
         linea_base_dias=p.linea_base_d, relacion_sismo=p.relacion,
         cobertura_pct=round(100 * v.mean(), 1),
-        offset_referencia_cm=round(off, 2),
+        offset_referencia_mm=round(off, 2),
         coh_media=round(float(np.nanmean(coh)), 3) if np.isfinite(coh).any() else np.nan,
         coh_ge_umbral_pct=round(100 * float(np.nanmean(coh >= COH_MIN)), 1) if np.isfinite(coh).any() else np.nan,
-        los_p2_cm=round(float(np.nanpercentile(los[v], 2)), 2) if v.any() else np.nan,
-        los_p98_cm=round(float(np.nanpercentile(los[v], 98)), 2) if v.any() else np.nan,
-        los_abs_p99_cm=round(float(np.nanpercentile(np.abs(los[v]), 99)), 2) if v.any() else np.nan,
-        ruido_campo_lejano_cm=round(mad(los[lejos]), 2) if lejos.any() else np.nan,
+        los_p2_mm=round(float(np.nanpercentile(los[v], 2)), 2) if v.any() else np.nan,
+        los_p98_mm=round(float(np.nanpercentile(los[v], 98)), 2) if v.any() else np.nan,
+        los_abs_p99_mm=round(float(np.nanpercentile(np.abs(los[v]), 99)), 2) if v.any() else np.nan,
+        ruido_campo_lejano_mm=round(mad(los[lejos]), 2) if lejos.any() else np.nan,
         n_pix_campo_lejano=int(lejos.sum()),
         mirada_E_media=round(float(np.nanmean(e)), 3) if np.isfinite(e).any() else np.nan,
         mirada_U_media=round(float(np.nanmean(u)), 3) if np.isfinite(u).any() else np.nan,
         producto=p.nombre))
 M = pd.DataFrame(met)
-COLS_EN = {"offset_referencia_cm": "reference_offset_cm", "ionosfera": "ionosphere", "fuente": "source", "sensor": "sensor", "banda": "band", "track": "track", "fecha_ref": "ref_date", "fecha_sec": "sec_date",
+COLS_EN = {"offset_referencia_mm": "reference_offset_mm", "ionosfera": "ionosphere", "fuente": "source", "sensor": "sensor", "banda": "band", "track": "track", "fecha_ref": "ref_date", "fecha_sec": "sec_date",
            "linea_base_dias": "baseline_days", "relacion_sismo": "relation_to_quake", "cobertura_pct": "coverage_pct",
-           "coh_media": "mean_coherence", "coh_ge_umbral_pct": f"coh_ge_{COH_MIN}_pct", "los_p2_cm": "los_p2_cm",
-           "los_p98_cm": "los_p98_cm", "los_abs_p99_cm": "los_abs_p99_cm",
-           "ruido_campo_lejano_cm": "far_field_noise_cm", "n_pix_campo_lejano": "n_far_field_pixels",
+           "coh_media": "mean_coherence", "coh_ge_umbral_pct": f"coh_ge_{COH_MIN}_pct", "los_p2_mm": "los_p2_mm",
+           "los_p98_mm": "los_p98_mm", "los_abs_p99_mm": "los_abs_p99_mm",
+           "ruido_campo_lejano_mm": "far_field_noise_mm", "n_pix_campo_lejano": "n_far_field_pixels",
            "mirada_E_media": "look_E_mean", "mirada_U_media": "look_U_mean", "producto": "product"}
 M.to_csv(f"{OUT}/metricas_insar_es.csv", index=False)
 M.rename(columns=COLS_EN).to_csv(f"{OUT}/metricas_insar_en.csv", index=False)
 print("\n=== MÉTRICAS / METRICS (ventana regional) ===")
 print(M.drop(columns=["producto"]).to_string(index=False))
 
-# límite de color común (± cm) a partir de los cosísmicos / common colour limit from coseismic products
+# límite de color común (± mm) a partir de los cosísmicos / common colour limit from coseismic products
 co = [cache[n] for n, r in zip(prod.nombre, prod.relacion) if r == "CO"] or list(cache.values())
-LIM = float(LIM_CM) if LIM_CM else float(np.ceil(np.nanpercentile(np.abs(np.concatenate([a[np.isfinite(a)] for a in co])), 99)))
-LIM = max(LIM, 2.0)
-print(f"\nLímite de color común / common colour limit: ±{LIM:g} cm")
+LIM = float(LIM_MM) if LIM_MM else float(np.ceil(np.nanpercentile(np.abs(np.concatenate([a[np.isfinite(a)] for a in co])), 99)))
+LIM = max(LIM, 20.0)
+print(f"\nLímite de color común / common colour limit: ±{LIM:g} mm")
 
 
 # ---------------------------------------------------------------- figuras
@@ -220,7 +221,7 @@ def _fig_mapas(vent, idioma, sub):
         if k >= n:
             ax.axis("off"); continue
         p = sub.iloc[k]
-        a = _a_ll(p.los, win) * 100.0 - OFF.get(p.nombre, 0.0)
+        a = _a_ll(p.los, win) * ESC - OFF.get(p.nombre, 0.0)
         c = _a_ll(p.pref + "_coh.tif", win)
         if np.isfinite(c).any():
             a = np.where(c >= COH_MIN, a, np.nan)
@@ -260,7 +261,7 @@ def _fig_perfil(idioma):
     for ax, grupo, rot in ((axs[0], "propio", "a"), (axs[1], "ucsd", "b")):
         sub = prod[prod.fuente == grupo].reset_index(drop=True)
         for k, p in sub.iterrows():
-            a = _a_ll(p.los, win) * 100.0 - OFF.get(p.nombre, 0.0)
+            a = _a_ll(p.los, win) * ESC - OFF.get(p.nombre, 0.0)
             c = _a_ll(p.pref + "_coh.tif", win)
             if np.isfinite(c).any():
                 a = np.where(c >= COH_MIN, a, np.nan)
@@ -289,18 +290,18 @@ for q, u in pares:
     v = np.isfinite(a) & np.isfinite(b)
     if v.sum() < 1000:
         continue
-    x, y = a[v], b[v]                                  # x = propio, y = UCSD (cm)
+    x, y = a[v], b[v]                                  # x = propio, y = UCSD (mm)
     sl, ic = np.polyfit(x, y, 1)
     cmp_f.append(dict(track=q.track, par=f"{q.ref.date()}→{q.sec.date()}", n_celdas=int(v.sum()),
                       sesgo_UCSD_menos_propio_cm=round(float(np.mean(y - x)), 2),
-                      rmse_cm=round(float(np.sqrt(np.mean((y - x) ** 2))), 2),
+                      rmse_mm=round(float(np.sqrt(np.mean((y - x) ** 2))), 2),
                       r2=round(float(np.corrcoef(x, y)[0, 1] ** 2), 3), pendiente=round(float(sl), 3),
-                      dentro_2cm_pct=round(100 * float(np.mean(np.abs(y - x) <= 2)), 1)))
+                      dentro_20mm_pct=round(100 * float(np.mean(np.abs(y - x) <= 20)), 1)))
 if cmp_f:
     C_ = pd.DataFrame(cmp_f)
     C_.to_csv(f"{OUT}/comparacion_propio_vs_ucsd_es.csv", index=False)
     C_.rename(columns={"par": "pair", "n_celdas": "n_cells", "sesgo_UCSD_menos_propio_cm": "bias_UCSD_minus_ours_cm",
-                       "pendiente": "slope", "dentro_2cm_pct": "within_2cm_pct"}).to_csv(f"{OUT}/comparacion_propio_vs_ucsd_en.csv", index=False)
+                       "pendiente": "slope", "dentro_20mm_pct": "within_20mm_pct"}).to_csv(f"{OUT}/comparacion_propio_vs_ucsd_en.csv", index=False)
     print("\n=== NUESTRO NISAR vs UCSD (mismo track y par) ===")
     print(C_.to_string(index=False))
 else:

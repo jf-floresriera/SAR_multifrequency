@@ -68,3 +68,7 @@ Nota / Note: los GeoTIFF "visual" de Planet son RGB; **el análisis multiespectr
 
 > 🇪🇸 **Suplemento = muchos paneles.** El material suplementario no tiene límite de figuras: usar figuras de **varios paneles** (cuadrículas a–z) para inventario, los 6 sitios de daño, cada geometría LOS (Sentinel-1, NISAR, ALOS-2) y pruebas de sensibilidad; el texto principal queda para los resultados clave (≤ 10 figuras).
 > 🇬🇧 **Supplement = many panels.** The electronic supplement has no figure limit: use **multi-panel** figures (grids a–z) for the inventory, all 6 damage sites, every LOS geometry (Sentinel-1, NISAR, ALOS-2) and sensitivity tests; keep the main text for the key results (≤ 10 figures).
+
+
+> 🇪🇸 **Actualización 26-nov-2026:** paleta divergente por defecto = Crameri **bam** (10–90 %) y cíclica **bamO**, para NO parecerse a UCSD/Scripps (marrón–azul y arcoíris). LOS en **mm**. Ver `FIGURAS_TABLAS_ESTADO.md`.
+> 🇬🇧 **Update 26 Nov 2026:** default diverging palette = Crameri **bam** (10–90 %), cyclic **bamO**, deliberately different from UCSD/Scripps (brown–blue and rainbow). LOS in **mm**. See `FIGURAS_TABLAS_ESTADO.md`.

@@ -39,9 +39,12 @@ def recortar(cmap, a=0.15, b=0.85, n=256):
 try:
     from cmcrameri import cm as _cm
     CMAPS = {
-        "divergente": recortar(_cm.vik),  # LOS, L − C, residuos (centro en 0); vik recortada 15–85 % = más clara / lighter
+        # LOS, L − C, residuos (centro en 0). UCSD/Scripps usa marrón–blanco–azul (≈ vik) y arcoíris para la fase: aquí se usa
+        # OTRA familia perceptual (Crameri «bam», magenta-marrón → verde), recortada 10–90 %; cambiar con PALETA_DIV=nombre.
+        # UCSD uses brown–white–blue (≈ vik) and a rainbow for phase: we deliberately use another perceptual family (bam).
+        "divergente": recortar(getattr(_cm, os.environ.get("PALETA_DIV", "bam")), 0.10, 0.90),
         "secuencial": _cm.batlow,    # coherencia, retrodispersión, elevación
-        "ciclico": _cm.romaO,        # fase interferométrica envuelta
+        "ciclico": getattr(_cm, os.environ.get("PALETA_CICLICA", "bamO")),   # fase envuelta (familia de «bam»)
         "relieve": _cm.grayC,        # sombreado / mapa base tenue
     }
 except Exception:                    # respaldo si falta cmcrameri / fallback

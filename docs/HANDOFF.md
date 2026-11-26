@@ -31,6 +31,9 @@
 4. **Lo que dijo otra IA (lista de fuentes de ALOS-2, CBERS-4A, etc.) NO está verificado** salvo lo marcado como comprobado aquí (UCSD: 7 enlaces y formato; Vantor: STAC; INPE: 0 escenas sobre Caracas).
 5. **Novedad frente a UCSD** (su página usa S-1, NISAR ×4 y ALOS-2 con GMTSAR): nosotros aportamos **Umbra (banda X), óptico (Planet/Vantor) y daño en edificios**. Falta confirmar que no hay publicación equivalente.
 
+### 0.35 Plan de figuras/tablas/estadísticas
+Ver [`FIGURAS_TABLAS_ESTADO.md`](FIGURAS_TABLAS_ESTADO.md): lo propuesto al inicio con su estado. **Nuevo:** LOS en mm, paleta bam/bamO (no la de UCSD), QC por interferograma (`qc`).
+
 ### 0.4 Orden de las celdas del maestro tras `git pull` (primera celda) / Cell order
 `mapas_base` (forzar) → `vantor` → `nisar_tif` (forzar) → `descomp` (forzar) → `auditoria` → `ucsd_los` → `insar_metricas` → luego figuras del suplemento. Las copias del cuaderno en Drive **no se actualizan solas**: el autor debe copiar celdas nuevas o abrir desde GitHub.
 

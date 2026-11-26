@@ -89,7 +89,7 @@ def descomponer(pares, nombre_banda, salida):
             if LEJOS is not None and (np.isfinite(los) & LEJOS).sum() > 500:
                 off = float(np.nanmedian(los[LEJOS]))
                 los = los - off
-                print(f"   referencia / reference: {os.path.basename(pref)}  desfase restado / offset removed = {off*100:+.1f} cm")
+                print(f"   referencia / reference: {os.path.basename(pref)}  desfase restado / offset removed = {off*1000:+.0f} mm")
             else:
                 print(f"   [!] SIN referenciar / NOT referenced: {os.path.basename(pref)}")
         G.append(np.stack([e, u], -1)); d.append(los)
@@ -203,9 +203,9 @@ def _fig(idioma):
     fig, axs = plt.subplots(3, 2, figsize=(180 / 25.4, 128 / 25.4))
     cm = CMAPS["divergente"] if "CMAPS" in globals() and "divergente" in CMAPS else "RdBu_r"
     for k, (ax, (clave, _)) in enumerate(zip(axs.flat, datos)):
-        a = ll[clave] * 100.0                                  # m → cm
+        a = ll[clave] * 1000.0                                 # m → mm
         lim = np.nanpercentile(np.abs(a), 98) if np.isfinite(a).any() else 1.0
-        lim = max(lim, 1.0)
+        lim = max(lim, 10.0)
         im = ax.imshow(a, extent=[LON0, LON1, LAT0, LAT1], cmap=cm, norm=TwoSlopeNorm(0, -lim, lim),
                        interpolation="nearest", zorder=2)
         ax.set_facecolor("#e8f0f7")                            # mar / sea (los NaN dejan ver el fondo)
@@ -223,7 +223,7 @@ def _fig(idioma):
         ax.set_title(T(clave, idioma), fontsize=7, loc="left", pad=2)
         etiqueta_panel(ax, "abcdef"[k], dx=-0.11, dy=1.0)
         cb = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.03, aspect=22)
-        cb.ax.set_title("cm", fontsize=6.5, pad=2); cb.ax.tick_params(labelsize=6, length=2)
+        cb.ax.set_title("mm", fontsize=6.5, pad=2); cb.ax.tick_params(labelsize=6, length=2)
         if k >= 4:
             ax.set_xlabel(T("longitud", idioma))
         if k % 2 == 0:

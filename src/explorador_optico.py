@@ -5,6 +5,7 @@ EXPLORADOR INTERACTIVO de zonas para el daño (banda X + óptico) — el autor e
 Condiciones de una zona candidata (en este orden) / candidate-zone conditions:
   1) hay UMBRA (banda X)  ·  2) hay PLANET SkySat DESPUÉS del sismo  ·  3) hay imagen ANTES (Vantor «pre»; si no, mosaico Planet Q1-2026)
   4) se ordenan por número de edificios DAÑADOS/DESTRUIDOS (HOTOSM + Copernicus EMS) → las más afectadas primero.
+Mover la ventana: arrastre el marcador en el mapa del panel (ipyleaflet) o use las flechas ↑↓←→ (paso en m). Cada toma = una configuración.
 Uso en Colab (después de la celda #1) / usage:
     from explorador_optico import Explorador
     ex = Explorador(RAIZ, TRABAJO)
@@ -195,9 +196,56 @@ class Explorador:
         bborrar, blista = w.Button(description="Borrar última / undo", button_style="warning"), w.Button(description="Ver guardadas / list")
         tnota = w.Text(description="Nota", placeholder="p. ej. ventana amplia / zoom edificio")
         out, msg = w.Output(), w.HTML()
+        centro = {"lat": None, "lon": None}                         # centro actual de la ventana (se mueve con el ratón)
+        paso = w.IntText(value=50, description="paso (m)", layout=w.Layout(width="160px"))
+        bn, bs, be, bo = [w.Button(description=t, layout=w.Layout(width="42px")) for t in ("↑", "↓", "→", "←")]
+        lblc = w.HTML()
+        mapa_w = None
+        try:
+            from google.colab import output as _co
+            _co.enable_custom_widget_manager()                      # necesario para ipyleaflet en Colab / needed for ipyleaflet in Colab
+        except Exception:
+            pass
+        try:
+            import ipyleaflet as L
+            r0 = self.zonas.iloc[0]
+            mapa_w = L.Map(center=(r0.lat, r0.lon), zoom=15, scroll_wheel_zoom=True, layout=w.Layout(height="420px", width="100%"))
+            mapa_w.add_layer(L.TileLayer(url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+                                         name="satélite (solo para explorar)", attribution="Esri"))
+            marcador = L.Marker(location=(r0.lat, r0.lon), draggable=True, title="Arrastre para mover la ventana / drag to move the window")
+            rect = L.Rectangle(bounds=((r0.lat, r0.lon), (r0.lat, r0.lon)), color="#D55E00", weight=2, fill_opacity=0.05)
+            mapa_w.add_layer(rect); mapa_w.add_layer(marcador)
+        except Exception as e:
+            msg.value = f"(mapa arrastrable no disponible: {str(e)[:60]} → instale con <code>!pip install -q ipyleaflet</code>; use las flechas)"
+            marcador = rect = None
+
+        def _rect():
+            dlon = dl.value / 2 / (111320 * np.cos(np.radians(centro["lat"]))); dlat = dl.value / 2 / 111320
+            if rect is not None:
+                rect.bounds = ((centro["lat"] - dlat, centro["lon"] - dlon), (centro["lat"] + dlat, centro["lon"] + dlon))
+            lblc.value = f"centro / centre: <b>{centro['lat']:.5f}, {centro['lon']:.5f}</b> · ventana {dl.value} m"
+
+        def mover_a(lat, lon, recentrar=False):
+            centro["lat"], centro["lon"] = lat, lon
+            if marcador is not None and tuple(marcador.location) != (lat, lon):
+                marcador.location = (lat, lon)
+            if recentrar and mapa_w is not None:
+                mapa_w.center = (lat, lon)
+            _rect()
+
+        if marcador is not None:
+            marcador.observe(lambda ch: mover_a(ch["new"][0], ch["new"][1]), names="location")
+
+        def empujar(dn, de):
+            dlat = dn * paso.value / 111320; dlon = de * paso.value / (111320 * np.cos(np.radians(centro["lat"])))
+            mover_a(centro["lat"] + dlat, centro["lon"] + dlon)
+        bn.on_click(lambda _: empujar(1, 0)); bs.on_click(lambda _: empujar(-1, 0))
+        be.on_click(lambda _: empujar(0, 1)); bo.on_click(lambda _: empujar(0, -1))
+        dl.observe(lambda _: _rect(), names="value")
 
         def opciones(*_):
             r = self.zonas[self.zonas.zona == dz.value].iloc[0]; p = Point(r.lon, r.lat)
+            mover_a(r.lat, r.lon, recentrar=True)
             pre = [(f"Vantor {x.fecha} (nubes {x.nubes}%)", x.url) for x in self.vantor[(self.vantor.fase == "pre") & self.vantor.contains(p)].sort_values("fecha", ascending=False).itertuples()]
             pre.append(("Planet mosaico Q1-2026 (4,8 m)", MOSAICO_PRE))
             post = [(f"Planet SkySat {str(x.datetime)[:16]}", x.url) for x in self.planet[self.planet.contains(p)].itertuples()]
@@ -218,14 +266,14 @@ class Explorador:
                     if not url:
                         ax.set_title(tit + "\n(sin escena)"); continue
                     try:
-                        a = self._recorte(url, r.lon, r.lat, dl.value, bandas=(1,) if sar else (1, 2, 3))
+                        a = self._recorte(url, centro["lon"], centro["lat"], dl.value, bandas=(1,) if sar else (1, 2, 3))
                         ax.imshow(self._sar(a) if sar else self._rgb(a), cmap="gray" if sar else None)
                     except Exception as e:
                         ax.text(0.5, 0.5, f"no se pudo leer\n{str(e)[:60]}", ha="center", transform=ax.transAxes)
                     lab = {d.value: d.label for d in (dpre, dpost, dum)}.get(url, "")
                     ax.set_title(f"{tit}\n{lab}", fontsize=9)
                     pdz = self.danio[self.danio.intersects(self.zonas[self.zonas.zona == dz.value].geometry.iloc[0].buffer(dl.value / 111320))]
-                fig.suptitle(f"{dz.value} · ventana {dl.value} m · {r.n_danio} edificios dañados", x=0.01, ha="left")
+                fig.suptitle(f"{dz.value} · {centro['lat']:.5f}, {centro['lon']:.5f} · ventana {dl.value} m", x=0.01, ha="left")
                 plt.tight_layout()
                 self._fig = fig
                 fig.savefig(f"{self.capturas}/vista_{dz.value}_{dl.value}m_{pd.Timestamp.now():%Y%m%d_%H%M%S}.png", dpi=110)
@@ -236,11 +284,11 @@ class Explorador:
             # every save is a new CONFIGURATION: the same zone can be saved several times
             r = self.zonas[self.zonas.zona == dz.value].iloc[0]
             prev = pd.read_csv(self.salida) if os.path.exists(self.salida) else pd.DataFrame()
-            fila = dict(zona=dz.value, lat=round(r.lat, 6), lon=round(r.lon, 6), ventana_m=dl.value, edificios_danados=r.n_danio,
+            fila = dict(zona=dz.value, lat=round(centro["lat"], 6), lon=round(centro["lon"], 6), ventana_m=dl.value, edificios_danados=r.n_danio,
                         antes=dpre.label, url_antes=dpre.value, despues=dpost.label, url_despues=dpost.value,
                         umbra=dum.label, url_umbra=dum.value, nota=tnota.value, fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
             if len(prev):
-                igual = (prev.zona == fila["zona"]) & (prev.ventana_m == fila["ventana_m"]) & (prev.url_antes == fila["url_antes"]) &                         (prev.url_despues == fila["url_despues"]) & (prev.url_umbra == fila["url_umbra"])
+                igual = (prev.zona == fila["zona"]) & (prev.ventana_m == fila["ventana_m"]) & (prev.lat.round(5) == round(fila["lat"], 5)) & (prev.lon.round(5) == round(fila["lon"], 5)) & (prev.url_antes == fila["url_antes"]) &                         (prev.url_despues == fila["url_despues"]) & (prev.url_umbra == fila["url_umbra"])
                 if igual.any():
                     msg.value = f"⚠️ Esa configuración de <b>{dz.value}</b> ya estaba guardada (no se duplica)."; return
             n_zona = int((prev.zona == dz.value).sum()) + 1 if len(prev) else 1
@@ -272,4 +320,7 @@ class Explorador:
 
         dz.observe(opciones, names="value"); bver.on_click(ver); busar.on_click(usar); bborrar.on_click(borrar); blista.on_click(listar)
         opciones()
-        display(w.VBox([w.HBox([dz, dl]), dpre, dpost, dum, tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]))
+        caja = [w.HBox([dz, dl]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
+        if mapa_w is not None:
+            caja.insert(1, mapa_w)
+        display(w.VBox(caja))

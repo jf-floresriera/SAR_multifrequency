@@ -176,7 +176,7 @@ def correr(script, carpeta_logs, src, notebook="", version=""):
                 # siempre se use la versión recién bajada con git pull (si no, Python reutiliza la vieja y falla el import).
                 # Project helper modules are dropped from memory so the freshly pulled version is always used.
                 for _m in [m for m, mod in list(sys.modules.items())
-                           if m not in ("comun", "maestro") and getattr(mod, "__file__", None)
+                           if m not in ("comun", "maestro") and not m.startswith("_") and getattr(mod, "__file__", None)
                            and os.path.dirname(os.path.abspath(mod.__file__)) == os.path.abspath(src)]:
                     del sys.modules[_m]
                 ns = get_ipython().user_ns          # equivalente a %run -i / same as %run -i

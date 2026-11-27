@@ -33,7 +33,7 @@ TXT.update({"i_sismo": {"es": "Mw 7,2 + 7,5 · 24 jun 2026", "en": "Mw 7.2 + 7.5
             "i_esc": {"es": "escena", "en": "scene"}, "i_par": {"es": "par interferométrico usado", "en": "interferometric pair used"},
             "i_ext": {"es": "par externo (UCSD)", "en": "external pair (UCSD)"},
             "i_pre": {"es": "ALOS-2 antes del 25 may (p. ej. T040A desde 14 ene 2025) →", "en": "ALOS-2 before 25 May (e.g. T040A from 14 Jan 2025) →"}})
-FILAS = [("X", "Umbra (X)"), ("C", "Sentinel-1 (C)"), ("L-NISAR", "NISAR (L)"), ("L-ALOS2", "ALOS-2 (L)"), ("OPT", "Óptico / Optical")]
+FILAS = [("X", "Umbra (X)"), ("C", "Sentinel-1 (C)"), ("L-NISAR", "NISAR (L)"), ("L-ALOS2", "ALOS-2 (L)"), ("OPT", "Planet + Vantor")]
 COL = {"X": OKABE_ITO[5], "C": OKABE_ITO[6], "L-NISAR": OKABE_ITO[3], "L-ALOS2": OKABE_ITO[1], "OPT": OKABE_ITO[7]}
 
 
@@ -67,8 +67,15 @@ if um is not None:
 for v in glob.glob(f"{TRAB}/vantor/vantor_escenas_*.csv"):
     for f_ in pd.to_datetime(pd.read_csv(v).fecha):
         escenas.append(dict(fila="OPT", fecha=f_))
-for f_ in ("2026-06-26", "2026-06-27", "2026-06-28"):           # Planet SkySat post-evento (Source Cooperative)
-    escenas.append(dict(fila="OPT", fecha=pd.Timestamp(f_)))
+inv = leer(f"{TRAB}/inventario/inventario_multisensor.csv")      # inventario del 19-nov (Planet antes/después, etc.)
+if inv is not None and "sensor" in inv:
+    pl = inv[inv.sensor.astype(str).str.startswith("Planet")]
+    for f_ in pd.to_datetime(pl.fecha, utc=True, errors="coerce").dt.tz_localize(None).dropna():
+        escenas.append(dict(fila="OPT", fecha=f_))
+    print(f"   Planet en el inventario / in the inventory: {len(pl)} escenas/scenes")
+else:
+    for f_ in ("2026-06-26", "2026-06-27", "2026-06-28"):        # respaldo: SkySat post-evento (Source Cooperative)
+        escenas.append(dict(fila="OPT", fecha=pd.Timestamp(f_)))
 PA, ES = pd.DataFrame(pares), pd.DataFrame(escenas).drop_duplicates()
 if len(PA):
     PA = PA.drop_duplicates(["fila", "ini", "fin", "etiqueta"])      # frames del mismo track = un solo par

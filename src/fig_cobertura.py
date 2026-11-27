@@ -176,6 +176,17 @@ for c in ("venezuela_estados", "fallas_activas_gem", "epicentros_usgs", "sitios_
         CTX[c] = gpd.read_file(g_, layer=c)
     except Exception:
         CTX[c] = None
+CTX["zona_reclamacion"] = None
+for _f in sorted(glob.glob(f"{RAIZ}/01_datos_crudos/mapas_base/zona_reclamacion_oficial.*")):     # polígono oficial, si existe
+    try:
+        CTX["zona_reclamacion"] = gpd.read_file(_f).to_crs(4326); break
+    except Exception:
+        pass
+if CTX["zona_reclamacion"] is None:
+    try:
+        CTX["zona_reclamacion"] = gpd.read_file(g_, layer="zona_reclamacion_aprox2")     # la crea mapa_ubicacion.py (paso mapas_base)
+    except Exception:
+        print("   (zona en reclamación: ejecute mapas_base para crearla / run mapas_base to create it)")
 if CTX.get("paises_sudamerica_ne50") is None:          # respaldo: el localizador nunca queda vacío / fallback so the locator is never empty
     try:
         _p = gpd.read_file(_NE); CTX["paises_sudamerica_ne50"] = _p[_p.intersects(box(-95, -60, -50, 20))]
@@ -197,15 +208,19 @@ def _fig(idioma):
     b = fig.add_axes([9 / 180, 62 / H, 168 / 180, h_map / H])
     c = fig.add_axes([4 / 180, 2 / H, 172 / 180, 36 / H])
     a = b.inset_axes([0.005, 0.52, 0.30, 0.47])            # ubicación incrustada (más grande) / larger embedded locator
+    a.set_zorder(20)                                      # por encima de los rótulos del mapa / above map labels
 
     # (a) ubicación
     a.set_facecolor("#dfe9f2")
     if CTX.get("paises_sudamerica_ne50") is not None:
         CTX["paises_sudamerica_ne50"].plot(ax=a, facecolor="#efefec", edgecolor="#8a8a8a", lw=0.3)
         p = CTX["paises_sudamerica_ne50"]; p[p.ADMIN == "Venezuela"].plot(ax=a, facecolor="#f6dcc0", edgecolor="#8a3a00", lw=0.5)
+    if CTX.get("zona_reclamacion") is not None:               # Guayana Esequiba: rayada, como en el mapa de ubicación (Fig. 1)
+        plt.rcParams["hatch.linewidth"] = 0.5
+        CTX["zona_reclamacion"].plot(ax=a, facecolor="white", edgecolor="#8a3a00", hatch="//////", lw=0.5, zorder=3)
     a.add_patch(Rectangle((WIN[0], WIN[2]), WIN[1] - WIN[0], WIN[3] - WIN[2], fill=False, ec="k", lw=0.8))
     for nom, (x_, y_) in {"Venezuela": (-66, 7), "Colombia": (-73.5, 4), "Brasil" if idioma == "es" else "Brazil": (-61.5, 1),
-                          "Guyana": (-58.9, 5.2), ("Mar Caribe" if idioma == "es" else "Caribbean Sea"): (-71, 13.3)}.items():
+                          "Guyana": (-57.4, 4.6), ("Mar Caribe" if idioma == "es" else "Caribbean Sea"): (-71, 13.3)}.items():
         a.text(x_, y_, nom, fontsize=5.5, ha="center", color="#8a3a00" if nom == "Venezuela" else "0.35",
                fontweight="bold" if nom == "Venezuela" else "normal")
     a.set_xlim(-80, -56); a.set_ylim(-2, 15); a.set_aspect(1 / np.cos(np.radians(7)))

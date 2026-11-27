@@ -10,7 +10,8 @@ Uso en Colab (después de la celda #1) / usage:
     ex = Explorador(RAIZ, TRABAJO)
     ex.mapa()      # mapa con zoom: daño, huellas Umbra/Planet/Vantor y zonas candidatas numeradas
     ex.panel()     # elegir zona, ventana (m) y escenas; «Ver» dibuja ANTES | DESPUÉS | UMBRA; «Usar» guarda la elección
-La elección se guarda en 05_documentacion/seleccion_zonas_danio.csv (zona, centro, ventana, escena antes, después y Umbra). No calcula métricas.
+Cada «Usar» guarda una CONFIGURACIÓN (Z1-1, Z1-2…): la misma zona puede guardarse con otra ventana u otras escenas. «Borrar última» deshace; «Ver guardadas» lista.
+Se guarda en 05_documentacion/seleccion_zonas_danio.csv. No calcula métricas.
 """
 import io
 import json
@@ -163,6 +164,8 @@ class Explorador:
         dl = w.IntSlider(value=600, min=200, max=2000, step=100, description="Ventana (m)", continuous_update=False)
         dpre, dpost, dum = w.Dropdown(description="ANTES"), w.Dropdown(description="DESPUÉS"), w.Dropdown(description="UMBRA (X)")
         bver, busar = w.Button(description="Ver / show", button_style="info"), w.Button(description="Usar esta / use", button_style="success")
+        bborrar, blista = w.Button(description="Borrar última / undo", button_style="warning"), w.Button(description="Ver guardadas / list")
+        tnota = w.Text(description="Nota", placeholder="p. ej. ventana amplia / zoom edificio")
         out, msg = w.Output(), w.HTML()
 
         def opciones(*_):
@@ -198,16 +201,41 @@ class Explorador:
                 plt.tight_layout(); plt.show()
 
         def usar(_):
+            # cada guardado es una CONFIGURACIÓN nueva: la misma zona puede guardarse varias veces (otra ventana u otras escenas)
+            # every save is a new CONFIGURATION: the same zone can be saved several times
             r = self.zonas[self.zonas.zona == dz.value].iloc[0]
-            fila = pd.DataFrame([dict(zona=dz.value, lat=round(r.lat, 6), lon=round(r.lon, 6), ventana_m=dl.value, edificios_danados=r.n_danio,
-                                      antes=dpre.label, url_antes=dpre.value, despues=dpost.label, url_despues=dpost.value,
-                                      umbra=dum.label, url_umbra=dum.value, fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))])
             prev = pd.read_csv(self.salida) if os.path.exists(self.salida) else pd.DataFrame()
+            fila = dict(zona=dz.value, lat=round(r.lat, 6), lon=round(r.lon, 6), ventana_m=dl.value, edificios_danados=r.n_danio,
+                        antes=dpre.label, url_antes=dpre.value, despues=dpost.label, url_despues=dpost.value,
+                        umbra=dum.label, url_umbra=dum.value, nota=tnota.value, fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
             if len(prev):
-                prev = prev[prev.zona != dz.value]
-            pd.concat([prev, fila], ignore_index=True).to_csv(self.salida, index=False)
-            msg.value = f"✅ <b>{dz.value}</b> guardada en {self.salida} ({len(prev) + 1} zonas elegidas)"
+                igual = (prev.zona == fila["zona"]) & (prev.ventana_m == fila["ventana_m"]) & (prev.url_antes == fila["url_antes"]) &                         (prev.url_despues == fila["url_despues"]) & (prev.url_umbra == fila["url_umbra"])
+                if igual.any():
+                    msg.value = f"⚠️ Esa configuración de <b>{dz.value}</b> ya estaba guardada (no se duplica)."; return
+            n_zona = int((prev.zona == dz.value).sum()) + 1 if len(prev) else 1
+            fila["config"] = f"{dz.value}-{n_zona}"                     # Z1-1, Z1-2, … / configuration id
+            pd.concat([prev, pd.DataFrame([fila])], ignore_index=True).to_csv(self.salida, index=False)
+            msg.value = f"✅ Guardada <b>{fila['config']}</b> (ventana {dl.value} m) en {self.salida} · total {len(prev) + 1} configuraciones"
 
-        dz.observe(opciones, names="value"); bver.on_click(ver); busar.on_click(usar)
+        def borrar(_):
+            if not os.path.exists(self.salida):
+                msg.value = "No hay configuraciones guardadas."; return
+            prev = pd.read_csv(self.salida)
+            if len(prev):
+                ult = prev.iloc[-1]["config"] if "config" in prev else prev.iloc[-1]["zona"]
+                prev.iloc[:-1].to_csv(self.salida, index=False)
+                msg.value = f"🗑️ Borrada la última: <b>{ult}</b> · quedan {len(prev) - 1}"
+
+        def listar(_):
+            with out:
+                clear_output(wait=True)
+                if os.path.exists(self.salida):
+                    t = pd.read_csv(self.salida)
+                    cols = [c for c in ("config", "zona", "ventana_m", "antes", "despues", "umbra", "nota") if c in t]
+                    display(t[cols])
+                else:
+                    print("Aún no hay configuraciones guardadas / nothing saved yet")
+
+        dz.observe(opciones, names="value"); bver.on_click(ver); busar.on_click(usar); bborrar.on_click(borrar); blista.on_click(listar)
         opciones()
-        display(w.VBox([w.HBox([dz, dl]), dpre, dpost, dum, w.HBox([bver, busar]), msg, out]))
+        display(w.VBox([w.HBox([dz, dl]), dpre, dpost, dum, tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]))

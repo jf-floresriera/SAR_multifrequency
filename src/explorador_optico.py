@@ -11,7 +11,7 @@ Uso en Colab (después de la celda #1) / usage:
     ex.mapa()      # mapa con zoom: daño, huellas Umbra/Planet/Vantor y zonas candidatas numeradas
     ex.panel()     # elegir zona, ventana (m) y escenas; «Ver» dibuja ANTES | DESPUÉS | UMBRA; «Usar» guarda la elección
 Cada «Usar» guarda una CONFIGURACIÓN (Z1-1, Z1-2…): la misma zona puede guardarse con otra ventana u otras escenas. «Borrar última» deshace; «Ver guardadas» lista.
-Se guarda en 05_documentacion/seleccion_zonas_danio.csv. No calcula métricas.
+Se guarda en 05_documentacion/seleccion_zonas_danio.csv. Capturas en 04_figuras/borradores/explorador/: mapa_zonas_candidatas.html, vista_*.png (cada «Ver») y ELEGIDA_<config>.png (cada «Usar»). No calcula métricas.
 """
 import io
 import json
@@ -47,6 +47,9 @@ class Explorador:
         from shapely.ops import unary_union
         self.raiz, self.trab = raiz, trabajo
         self.salida = f"{raiz}/05_documentacion/seleccion_zonas_danio.csv"
+        self.capturas = f"{raiz}/04_figuras/borradores/explorador"           # capturas de lo que se miró / screenshots of what was viewed
+        os.makedirs(self.capturas, exist_ok=True)
+        self._fig = None
         # --- daño de referencia (destruido / dañado)
         d = gpd.read_file(f"{raiz}/01_datos_crudos/danio_referencia/danio_referencia.gpkg", layer="edificios_danio")
         if "clase" in d:
@@ -123,6 +126,9 @@ class Explorador:
             folium.Marker([r.lat, r.lon], tooltip=f"{r.zona}: {r.n_danio} edificios dañados · Umbra {r.umbra} · Planet {r.planet_post} · Vantor antes {r.vantor_pre}",
                           icon=folium.DivIcon(html=f'<div style="font-weight:bold;color:#D55E00;background:white;padding:1px 3px;border-radius:3px">{r.zona}</div>')).add_to(fz)
         folium.LayerControl(collapsed=False).add_to(m)
+        m.save(f"{self.capturas}/mapa_zonas_candidatas.html")      # se abre en el navegador / opens in a browser
+        self.zonas.drop(columns="geometry").to_csv(f"{self.capturas}/zonas_candidatas.csv", index=False)
+        print(f"Mapa guardado / map saved: {self.capturas}/mapa_zonas_candidatas.html")
         return m
 
     # ------------------------------------------------------------ panel de selección
@@ -198,7 +204,10 @@ class Explorador:
                     ax.set_title(f"{tit}\n{lab}", fontsize=9)
                     pdz = self.danio[self.danio.intersects(self.zonas[self.zonas.zona == dz.value].geometry.iloc[0].buffer(dl.value / 111320))]
                 fig.suptitle(f"{dz.value} · ventana {dl.value} m · {r.n_danio} edificios dañados", x=0.01, ha="left")
-                plt.tight_layout(); plt.show()
+                plt.tight_layout()
+                self._fig = fig
+                fig.savefig(f"{self.capturas}/vista_{dz.value}_{dl.value}m_{pd.Timestamp.now():%Y%m%d_%H%M%S}.png", dpi=110)
+                plt.show()
 
         def usar(_):
             # cada guardado es una CONFIGURACIÓN nueva: la misma zona puede guardarse varias veces (otra ventana u otras escenas)
@@ -214,6 +223,9 @@ class Explorador:
                     msg.value = f"⚠️ Esa configuración de <b>{dz.value}</b> ya estaba guardada (no se duplica)."; return
             n_zona = int((prev.zona == dz.value).sum()) + 1 if len(prev) else 1
             fila["config"] = f"{dz.value}-{n_zona}"                     # Z1-1, Z1-2, … / configuration id
+            if self._fig is not None:
+                self._fig.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{dl.value}m.png", dpi=150)
+                fila["captura"] = f"ELEGIDA_{fila['config']}_{dl.value}m.png"
             pd.concat([prev, pd.DataFrame([fila])], ignore_index=True).to_csv(self.salida, index=False)
             msg.value = f"✅ Guardada <b>{fila['config']}</b> (ventana {dl.value} m) en {self.salida} · total {len(prev) + 1} configuraciones"
 

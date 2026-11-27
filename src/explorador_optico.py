@@ -218,6 +218,27 @@ class Explorador:
                                          name="satélite (solo para explorar)", attribution="Esri"))
             marcador = L.Marker(location=(r0.lat, r0.lon), draggable=True, title="Arrastre para mover la ventana / drag to move the window")
             rect = L.Rectangle(bounds=((r0.lat, r0.lon), (r0.lat, r0.lon)), color="#D55E00", weight=2, fill_opacity=0.05)
+            # huellas de TODAS las escenas disponibles (capas activables) / footprints of ALL available scenes (toggleable)
+            def _capa(g, nombre, col, etiqueta, opac=0.04):
+                if g is None or not len(g):
+                    return
+                gg = g[["geometry"]].copy(); gg["info"] = etiqueta(g)
+                mapa_w.add_layer(L.GeoJSON(data=json.loads(gg.to_json()), name=nombre,
+                                           style={"color": col, "weight": 1.5, "fillOpacity": opac},
+                                           hover_style={"weight": 3, "fillOpacity": 0.25}))
+            _capa(self.umbra, "Umbra (X)", "#0072B2",
+                  lambda g: [f"Umbra {str(t)[:16]} {s_}" for t, s_ in zip(g.inicio_utc, g.satelite)])
+            if len(self.planet):
+                _capa(self.planet, "Planet SkySat (después)", "#CC79A7", lambda g: [str(t)[:16] for t in g.get("datetime", g.index)])
+            _capa(self.vantor[self.vantor.fase == "pre"], "Vantor ANTES", "#009E73", lambda g: list(g.fecha))
+            _capa(self.vantor[self.vantor.fase == "post"], "Vantor DESPUÉS", "#555555", lambda g: list(g.fecha), opac=0.0)
+            try:                                                    # daño de referencia como puntos / reference damage as points
+                cen = self.danio.to_crs(32619).geometry.centroid.to_crs(4326)
+                mapa_w.add_layer(L.MarkerCluster(name="Edificios dañados", markers=[L.CircleMarker(location=(p_.y, p_.x), radius=3,
+                                 color="#B2182B", fill_color="#B2182B", fill_opacity=0.8, weight=0) for p_ in cen[:4000]]))
+            except Exception:
+                pass
+            mapa_w.add_control(L.LayersControl(position="topright"))
             mapa_w.add_layer(rect); mapa_w.add_layer(marcador)
         except Exception as e:
             msg.value = f"(mapa arrastrable no disponible: {str(e)[:60]} → instale con <code>!pip install -q ipyleaflet</code>; use las flechas)"

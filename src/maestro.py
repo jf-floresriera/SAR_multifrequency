@@ -42,10 +42,11 @@ PASOS = [
     ("optico",      "D Daño",       "optico_explorar.py",           "E: zonas más dañadas y exploración de Vantor/Planet; el autor elige (seleccion_optico.csv)", "E: most damaged zones; author picks optical scenes"),
     ("vantor",      "D Daño",       "vantor_buscar.py",             "Óptico ~0,4 m ANTES/DESPUÉS (Vantor abierto) por sitio",  "~0.4 m optical PRE/POST (Vantor open data) per site"),
     ("danio_sitios", "D Daño",      "umbra_planet_sitios.py",       "Umbra × Planet por sitio (Fig. 8 y suplemento)",     "Umbra × Planet per site (Fig. 8 and supplement)"),
+    ("indices_x",   "D Daño",       "indices_banda_x.py",           "Fig. 9 / Tabla 3: índices de banda X por edificio (Lee, CV, GLCM), Kruskal–Wallis y δ de Cliff", "Fig. 9 / Table 3: X-band per-building indices, Kruskal–Wallis and Cliff's δ"),
     ("exportar",    "E Salida",     "exportar_figuras_github.py",   "Preparar figuras para GitHub (sin Planet/Esri)",     "Prepare figures for GitHub (no Planet/Esri)"),
 ]
 IDS = [p[0] for p in PASOS]
-SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "mosaico", "comparacion", "insar_metricas", "tablas", "inventario", "cobertura", "presismico", "verif_iono", "optico"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
+SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "mosaico", "comparacion", "insar_metricas", "tablas", "inventario", "cobertura", "presismico", "verif_iono", "optico", "indices_x"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
 
 # Hecho ANTES de este cuaderno (19-nov-2026), con la evidencia encontrada en Drive. Es evidencia de que el paso
 # se ejecutó, no una verificación del contenido de sus salidas. / Done BEFORE this notebook, with Drive evidence.

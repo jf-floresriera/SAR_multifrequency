@@ -28,6 +28,7 @@ PASOS = [
     ("s1_tif",      "C InSAR",      "s1_hyp3_a_geotiff.py",         "Sentinel-1 HyP3 → GeoTIFF (LOS, coherencia)",        "Sentinel-1 HyP3 → GeoTIFF (LOS, coherence)"),
     ("presismico",  "C InSAR",      "presismico.py",                "Pares PRE-sísmicos (control): S-1 por HyP3 (confirmar) y NISAR GUNW", "Pre-seismic control pairs: S-1 via HyP3 (confirm) and NISAR GUNW"),
     ("descomp",     "C InSAR",      "descomposicion_C_L.py",        "Este/Vertical C y L, L − C, validación GNSS",        "East/Up C and L, L − C, GNSS validation"),
+    ("verif_iono",  "C InSAR",      "verificar_ionosfera.py",       "Punto B: ¿el GUNW ya trae la ionosfera aplicada? (banderas + prueba de campo lejano)", "Is the ionosphere already applied in the GUNW?"),
     ("ucsd_los",    "C InSAR",      "ucsd_los_a_geotiff.py",        "ALOS-2 y NISAR procesados por UCSD → GeoTIFF (7 tracks)",  "UCSD-processed ALOS-2 and NISAR → GeoTIFF (7 tracks)"),
     ("auditoria",   "C InSAR",      "auditar_correcciones.py",      "Auditoría: qué correcciones traen los productos",    "Audit: which corrections the products carry"),
     ("qc",          "C InSAR",      "qc_interferogramas.py",        "QC por interferograma: franjas, coherencia, ruido, diagnóstico", "Per-interferogram QC: fringes, coherence, noise, diagnosis"),
@@ -43,7 +44,7 @@ PASOS = [
     ("exportar",    "E Salida",     "exportar_figuras_github.py",   "Preparar figuras para GitHub (sin Planet/Esri)",     "Prepare figures for GitHub (no Planet/Esri)"),
 ]
 IDS = [p[0] for p in PASOS]
-SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "mosaico", "comparacion", "insar_metricas", "tablas", "inventario", "cobertura", "presismico"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
+SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "mosaico", "comparacion", "insar_metricas", "tablas", "inventario", "cobertura", "presismico", "verif_iono"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
 
 # Hecho ANTES de este cuaderno (19-nov-2026), con la evidencia encontrada en Drive. Es evidencia de que el paso
 # se ejecutó, no una verificación del contenido de sus salidas. / Done BEFORE this notebook, with Drive evidence.

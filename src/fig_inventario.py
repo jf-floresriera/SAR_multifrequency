@@ -108,10 +108,10 @@ def _fig(idioma):
             ax.annotate(T("i_pre", idioma), (T0, y + 0.22), fontsize=5.2, color=COL[k], ha="left", va="bottom")
         p = PA[PA.fila == k] if len(PA) else PA
         if "inventario" in p:
-            q = p[p.inventario.fillna(False).astype(bool)]
+            q = p[p.inventario.astype("boolean").fillna(False).astype(bool)]
             for r in q.itertuples():
                 ax.plot([max(r.ini, T0), min(r.fin, T1)], [y + 0.32, y + 0.32], color=COL[k], lw=0.6, alpha=0.35, solid_capstyle="butt", zorder=2)
-            p = p[~p.inventario.fillna(False).astype(bool)]
+            p = p[~p.inventario.astype("boolean").fillna(False).astype(bool)]
         for j, r in enumerate(p.sort_values("ini").itertuples()):
             yy = y - 0.28 + 0.14 * (j % 4)
             ini = max(r.ini, T0)

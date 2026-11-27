@@ -240,7 +240,8 @@ class Explorador:
                          layout=w.Layout(width="420px"))
         dtam = w.IntSlider(value=16, min=10, max=30, step=2, description="Tamaño fig.", continuous_update=False)
         dalto = w.IntSlider(value=520, min=300, max=900, step=50, description="Alto mapa", continuous_update=False)
-        dpre, dpost, dum = [w.Dropdown(description=t, layout=w.Layout(width="620px")) for t in ("ANTES", "DESPUÉS", "UMBRA (X)")]
+        dpre, dpost, dum, dum2 = [w.Dropdown(description=t, layout=w.Layout(width="620px"), style={"description_width": "initial"})
+                                 for t in ("ANTES", "DESPUÉS", "UMBRA 1 (X)", "UMBRA 2 (otra mirada, opcional)")]
         bver, busar = w.Button(description="Ver / show", button_style="info"), w.Button(description="Usar esta / use", button_style="success")
         bborrar, blista = w.Button(description="Borrar última / undo", button_style="warning"), w.Button(description="Ver guardadas / list")
         tnota = w.Text(description="Nota", placeholder="p. ej. ventana amplia / zoom edificio")
@@ -326,19 +327,29 @@ class Explorador:
             um = [(f"Umbra {str(x.inicio_utc)[:16]} · {x.satelite} · inc {x.incidencia_deg:.0f}° · {x.direccion_mirada}", x.url)
                   for x in self.umbra[self.umbra.contains(p)].itertuples()]
             dpre.options, dpost.options, dum.options = pre, post, um
+            dum2.options = [("(ninguna / none)", None)] + um
+            # sugerir para UMBRA 2 una escena con la mirada CONTRARIA a la de UMBRA 1 / suggest the opposite look
+            if um:
+                lado1 = "left" if "left" in dum.label else "right"
+                otra = [u for u in um if ("right" if lado1 == "left" else "left") in u[0]]
+                dum2.value = otra[0][1] if otra else None
             msg.value = f"<b>{r.zona}</b>: {r.n_danio} edificios dañados · {r.lat:.5f}, {r.lon:.5f} · {len(pre)} antes · {len(post)} después · {len(um)} Umbra"
 
         # --- Desfase de Umbra respecto al óptico: los GEC de Umbra están proyectados sobre el ELIPSOIDE (sin corrección de terreno),
         # así que cada punto se desplaza ~ h·cot(incidencia) hacia el satélite (h = altura; a 48° y 50 m ≈ 45 m). Se corrige con un
         # desplazamiento constante en la ventana: manual (barras) o automático (correlación de bordes con el óptico DESPUÉS).
         # Umbra GEC is ellipsoid-projected (no terrain correction): points shift ~h·cot(incidence) toward the sensor.
+        dE2 = w.IntSlider(value=0, min=-300, max=300, step=5, description="UMBRA 2 · Este ΔE (m)", continuous_update=False,
+                          style={"description_width": "initial"}, layout=w.Layout(width="360px"))
+        dN2 = w.IntSlider(value=0, min=-300, max=300, step=5, description="UMBRA 2 · Norte ΔN (m)", continuous_update=False,
+                          style={"description_width": "initial"}, layout=w.Layout(width="360px"))
         dE = w.IntSlider(value=0, min=-300, max=300, step=5, description="Este ΔE (m)", continuous_update=False,
                          style={"description_width": "initial"}, layout=w.Layout(width="360px"))
         dN = w.IntSlider(value=0, min=-300, max=300, step=5, description="Norte ΔN (m)", continuous_update=False,
                          style={"description_width": "initial"}, layout=w.Layout(width="360px"))
         bauto = w.Button(description="Alinear auto / auto-align", button_style="primary", layout=w.Layout(width="200px"))
         bcero = w.Button(description="Desfase 0", layout=w.Layout(width="100px"))
-        bcero.on_click(lambda _: (setattr(dE, "value", 0), setattr(dN, "value", 0)))
+        bcero.on_click(lambda _: [setattr(x, "value", 0) for x in (dE, dN, dE2, dN2)])
         corr = w.Checkbox(value=True, description="Corregir relieve (DEM) / terrain-correct", indent=False)
         inv_ = w.Checkbox(value=False, description="invertir sentido / flip", indent=False)
 
@@ -348,38 +359,50 @@ class Explorador:
                 return a, nota
             return self._recorte(url, lo_, la_, lado, bandas=(1,), n=n)[0], "sin corrección de relieve"
 
-        def _desplazado():
+        def _desplazado(k=1):
+            if k == 2:
+                return (centro["lon"] + dE2.value / (111320 * np.cos(np.radians(centro["lat"]))), centro["lat"] + dN2.value / 111320)
             # ΔE/ΔN = cuánto aparece DESPLAZADA la imagen Umbra (+ = hacia el este/norte); se lee Umbra en centro + Δ para alinearla
             la = centro["lat"] + dN.value / 111320
             lo = centro["lon"] + dE.value / (111320 * np.cos(np.radians(centro["lat"])))
             return lo, la
 
-        def auto(_=None):
+        def _alinear(url_u):
+            """Desfase (ΔE, ΔN en m) de una escena Umbra respecto al óptico DESPUÉS, por correlación de bordes / offset of one Umbra scene."""
             from skimage.registration import phase_cross_correlation
             from scipy.ndimage import sobel, gaussian_filter
-            if not (dpost.value and dum.value):
-                msg.value = "Elija una escena DESPUÉS y una UMBRA"; return
-            msg.value = "Alineando… / aligning…"
             n = 400
             o = self._recorte(dpost.value, centro["lon"], centro["lat"], dl.value, n=n).mean(0)
-            u, _ = _umbra(dum.value, centro["lon"], centro["lat"], dl.value, n=n)
+            u, _ = _umbra(url_u, centro["lon"], centro["lat"], dl.value, n=n)
             val = np.isfinite(u) & (u > 0)
             if val.mean() < 0.3:
-                msg.value = f"⚠️ Umbra casi sin datos en esta ventana ({val.mean() * 100:.0f} % válido): mueva la ventana o elija otra escena"; return
+                return None, f"Umbra casi sin datos en esta ventana ({val.mean() * 100:.0f} % válido)"
             u = np.where(val, np.log10(np.where(val, u, 1.0)), np.nan); u = np.where(np.isfinite(u), u, np.nanmedian(u))
             o = np.where(np.isfinite(o), o, np.nanmedian(o))
             def bordes(x):
                 x = gaussian_filter(x, 2); g = np.hypot(sobel(x, 0), sobel(x, 1)); return (g - g.mean()) / (g.std() + 1e-9)
-            mo, mu = np.ones_like(o, bool), val
             if val.all():
                 res = phase_cross_correlation(bordes(o), bordes(u), upsample_factor=4)
             else:                                                     # con máscaras skimage devuelve solo el desplazamiento
-                res = phase_cross_correlation(bordes(o), bordes(u), reference_mask=mo, moving_mask=mu)
-            (fy, fx), err = (res[0], res[1]) if isinstance(res, tuple) else (res, np.nan)
+                res = phase_cross_correlation(bordes(o), bordes(u), reference_mask=np.ones_like(o, bool), moving_mask=val)
+            fy, fx = (res[0] if isinstance(res, tuple) else res)
             px = dl.value / n
-            # desplazamiento a aplicar a Umbra: fila → norte (las filas crecen hacia el sur), columna → este
-            dE.value = int(np.clip(round(-fx * px / 5) * 5, -300, 300)); dN.value = int(np.clip(round(fy * px / 5) * 5, -300, 300))
-            msg.value = f"Desfase estimado / estimated offset: ΔE = {dE.value} m, ΔN = {dN.value} m (error {err:.2f}). Revise con «Ver»; ajuste a mano si hace falta."
+            return (int(np.clip(round(-fx * px / 5) * 5, -300, 300)), int(np.clip(round(fy * px / 5) * 5, -300, 300))), ""
+
+        def auto(_=None):
+            if not (dpost.value and dum.value):
+                msg.value = "Elija una escena DESPUÉS y una UMBRA 1"; return
+            msg.value = "Alineando… / aligning…"
+            textos = []
+            for k, (url_u, sE, sN) in enumerate(((dum.value, dE, dN), (dum2.value, dE2, dN2)), start=1):
+                if not url_u:
+                    continue
+                d_, err_ = _alinear(url_u)
+                if d_ is None:
+                    textos.append(f"UMBRA {k}: ⚠️ {err_}"); continue
+                sE.value, sN.value = d_
+                textos.append(f"UMBRA {k}: ΔE = {d_[0]} m, ΔN = {d_[1]} m")
+            msg.value = " · ".join(textos) + " — revise con «Ver»; ajuste a mano si hace falta."
             ver()
         bauto.on_click(auto)
 
@@ -387,14 +410,17 @@ class Explorador:
             r = self.zonas[self.zonas.zona == dz.value].iloc[0]
             with out:
                 clear_output(wait=True)
-                fig, axs = plt.subplots(1, 3, figsize=(dtam.value, dtam.value * 0.36))
-                for ax, (tit, url, sar) in zip(axs, (("ANTES / before", dpre.value, False), ("DESPUÉS / after", dpost.value, False),
-                                                     ("UMBRA banda X / X-band", dum.value, True))):
+                paneles = [("ANTES / before", dpre.value, 0), ("DESPUÉS / after", dpost.value, 0), ("UMBRA 1 · banda X / X-band", dum.value, 1)]
+                if dum2.value:
+                    paneles.append(("UMBRA 2 · banda X / X-band", dum2.value, 2))
+                fig, axs = plt.subplots(1, len(paneles), figsize=(dtam.value, dtam.value * (1.08 / len(paneles))))
+                for ax, (tit, url, k_u) in zip(axs, paneles):
+                    sar = k_u > 0
                     ax.axis("off"); nota_u = ""
                     if not url:
                         ax.set_title(tit + "\n(sin escena)"); continue
                     try:
-                        lo_, la_ = _desplazado() if sar else (centro["lon"], centro["lat"])
+                        lo_, la_ = _desplazado(k_u) if sar else (centro["lon"], centro["lat"])
                         if sar:
                             a0, nota_u = _umbra(url, lo_, la_, dl.value)
                             a = a0[None]
@@ -403,7 +429,7 @@ class Explorador:
                         ax.imshow(self._sar(a) if sar else self._rgb(a), cmap="gray" if sar else None)
                     except Exception as e:
                         ax.text(0.5, 0.5, f"no se pudo leer\n{str(e)[:60]}", ha="center", transform=ax.transAxes)
-                    lab = {d.value: d.label for d in (dpre, dpost, dum)}.get(url, "")
+                    lab = {d.value: d.label for d in (dpre, dpost, dum, dum2) if d.value}.get(url, "")
                     ax.set_title(f"{tit}\n{lab}" + (f"\n{nota_u}" if sar and nota_u else ""), fontsize=8.5)
                 from shapely.geometry import box as _bx
                 dlo = dl.value / 2 / (111320 * np.cos(np.radians(centro["lat"]))); dla = dl.value / 2 / 111320
@@ -429,9 +455,12 @@ class Explorador:
                         danados=int(sum(v for k, v in por_clase.items() if "dañ" in k.lower() or "dan" in k.lower())),
                         umbra_dE_m=dE.value, umbra_dN_m=dN.value, umbra_relieve_corregido=corr.value, umbra_invertido=inv_.value,
                         antes=dpre.label, url_antes=dpre.value, despues=dpost.label, url_despues=dpost.value,
-                        umbra=dum.label, url_umbra=dum.value, nota=tnota.value, fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
+                        umbra=dum.label, url_umbra=dum.value, umbra_mirada=("left" if "left" in dum.label else "right") if dum.value else "",
+                        umbra2=(dum2.label if dum2.value else ""), url_umbra2=(dum2.value or ""),
+                        umbra2_mirada=(("left" if "left" in dum2.label else "right") if dum2.value else ""),
+                        umbra2_dE_m=(dE2.value if dum2.value else np.nan), umbra2_dN_m=(dN2.value if dum2.value else np.nan), nota=tnota.value, fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
             if len(prev):
-                igual = (prev.zona == fila["zona"]) & (prev.ventana_m == fila["ventana_m"]) & (prev.lat.round(5) == round(fila["lat"], 5)) & (prev.lon.round(5) == round(fila["lon"], 5)) & (prev.url_antes == fila["url_antes"]) &                         (prev.url_despues == fila["url_despues"]) & (prev.url_umbra == fila["url_umbra"])
+                igual = (prev.zona == fila["zona"]) & (prev.ventana_m == fila["ventana_m"]) & (prev.lat.round(5) == round(fila["lat"], 5)) & (prev.lon.round(5) == round(fila["lon"], 5)) & (prev.url_antes == fila["url_antes"]) &                         (prev.url_despues == fila["url_despues"]) & (prev.url_umbra == fila["url_umbra"]) & (prev.get("url_umbra2", pd.Series("", index=prev.index)).fillna("") == fila["url_umbra2"])
                 if igual.any():
                     msg.value = f"⚠️ Esa configuración de <b>{dz.value}</b> ya estaba guardada (no se duplica)."; return
             n_zona = int((prev.zona == dz.value).sum()) + 1 if len(prev) else 1
@@ -464,7 +493,7 @@ class Explorador:
 
         dz.observe(opciones, names="value"); bver.on_click(ver); busar.on_click(usar); bborrar.on_click(borrar); blista.on_click(listar)
         opciones()
-        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, w.VBox([w.HTML('<b>⚙️ Alinear Umbra (X) con el óptico</b> — Umbra GEC no está corregido por relieve: muévalo hasta que calles y edificios coincidan'), w.HBox([dE, dN]), w.HBox([bauto, bcero, corr, inv_])], layout=w.Layout(border='1px solid #0072B2', padding='4px', margin='4px 0')), tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
+        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, dum2, w.VBox([w.HTML('<b>⚙️ Alinear Umbra (X) con el óptico</b> — Umbra GEC no está corregido por relieve: muévalo hasta que calles y edificios coincidan'), w.HBox([dE, dN]), w.HBox([dE2, dN2]), w.HBox([bauto, bcero, corr, inv_])], layout=w.Layout(border='1px solid #0072B2', padding='4px', margin='4px 0')), tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
         if mapa_w is not None:
             caja.insert(1, mapa_w)
         display(w.VBox(caja))

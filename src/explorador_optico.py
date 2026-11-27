@@ -12,6 +12,8 @@ Uso en Colab (después de la celda #1) / usage:
     ex.mapa()      # mapa con zoom: daño, huellas Umbra/Planet/Vantor y zonas candidatas numeradas
     ex.panel()     # elegir zona, ventana (m) y escenas; «Ver» dibuja ANTES | DESPUÉS | UMBRA; «Usar» guarda la elección
 Cada «Usar» guarda una CONFIGURACIÓN (Z1-1, Z1-2…): la misma zona puede guardarse con otra ventana u otras escenas. «Borrar última» deshace; «Ver guardadas» lista.
+Cada «Usar» guarda además los RECORTES con TODAS sus bandas (GeoTIFF, misma malla UTM 19N) en 02_procesados/recortes_zonas/<config>/
+para hacer composiciones e índices: ex.cargar('Z1-3') los devuelve como arreglos; ex.guardar_recortes() rehace los que falten.
 Se guarda en 05_documentacion/seleccion_zonas_danio.csv. Capturas en 04_figuras/borradores/explorador/: mapa_zonas_candidatas.html, vista_*.png (cada «Ver») y ELEGIDA_<config>.png (cada «Usar»). No calcula métricas.
 """
 import io
@@ -51,6 +53,7 @@ class Explorador:
         self.capturas = f"{raiz}/04_figuras/borradores/explorador"           # capturas de lo que se miró / screenshots of what was viewed
         os.makedirs(self.capturas, exist_ok=True)
         self._fig = None
+        self.recortes = f"{raiz}/02_procesados/recortes_zonas"             # recortes multibanda por configuración / multiband chips
         # --- daño de referencia (destruido / dañado)
         d = gpd.read_file(f"{raiz}/01_datos_crudos/danio_referencia/danio_referencia.gpkg", layer="edificios_danio")
         if "clase" in d:
@@ -215,6 +218,104 @@ class Explorador:
         img = map_coordinates(grande, [fil, col], order=1, mode="constant", cval=0.0)
         return img.astype("float32"), f"relieve corregido (θ={np.degrees(th):.0f}°, az={az:.0f}°, h máx {h.max():.0f} m)"
 
+    @staticmethod
+    def _si(v, defecto=False):
+        if v is None or (isinstance(v, float) and np.isnan(v)):
+            return defecto
+        if isinstance(v, str):
+            return v.strip().lower() in ("true", "1", "si", "sí", "yes")
+        return bool(v)
+
+    def guardar_recortes(self, fila=None, configs=None, px=None, rehacer=False):
+        """Guarda los recortes de una configuración (o de todas las del CSV) con TODAS sus bandas, en la MISMA malla UTM 19N:
+        antes.tif, despues.tif (todas las bandas ópticas), umbra1_<mirada>.tif, umbra2_<mirada>.tif (amplitud, con corrección de
+        relieve y desfase guardados), dem.tif, edificios_danio.gpkg y meta.json. Así se pueden hacer composiciones e índices después.
+        Saves every band of each chip on one common UTM 19N grid, so composites and indices can be computed later."""
+        import rasterio
+        from rasterio.transform import from_origin
+        from pyproj import Transformer
+        from shapely.geometry import box as _bx
+        if fila is None:
+            if not os.path.exists(self.salida):
+                print("No hay configuraciones guardadas / nothing saved"); return
+            t = pd.read_csv(self.salida)
+            if configs:
+                t = t[t.config.isin([configs] if isinstance(configs, str) else configs)]
+            for _, f in t.iterrows():
+                d = f"{self.recortes}/{f['config']}"
+                if os.path.exists(f"{d}/meta.json") and not rehacer:
+                    print(f"{f['config']}: ya hecho / already done"); continue
+                print(f"{f['config']}: {self.guardar_recortes(f.to_dict(), px=px)}")
+            return
+        f = fila
+        lado, lat, lon = float(f["ventana_m"]), float(f["lat"]), float(f["lon"])
+        p_ = px or max(0.5, lado / 4000)                                     # 0,5 m (ventanas ≤ 2 km); más grueso si es mayor
+        n = int(round(lado / p_))
+        x, y = Transformer.from_crs(4326, 32619, always_xy=True).transform(lon, lat)
+        tr = from_origin(x - lado / 2, y + lado / 2, lado / n, lado / n)
+        d = f"{self.recortes}/{f['config']}"
+        os.makedirs(d, exist_ok=True)
+        hechos, errores = {}, {}
+
+        def escribir(nombre, a, desc, nodata=0.0):
+            with rasterio.open(f"{d}/{nombre}.tif", "w", driver="GTiff", height=n, width=n, count=a.shape[0], dtype="float32",
+                               crs="EPSG:32619", transform=tr, compress="deflate", tiled=True, nodata=nodata) as o:
+                o.write(a.astype("float32"))
+                for i, t_ in enumerate(desc, 1):
+                    o.set_band_description(i, t_)
+            hechos[nombre] = f"{a.shape[0]} bandas"
+
+        for clave in ("antes", "despues"):
+            url = f.get(f"url_{clave}")
+            if isinstance(url, str) and url:
+                try:
+                    a = self._recorte(url, lon, lat, lado, bandas=tuple(range(1, 17)), n=n)
+                    escribir(clave, a, [f"{clave}_b{i}" for i in range(1, a.shape[0] + 1)])
+                except Exception as e:
+                    errores[clave] = str(e)[:120]
+        for k, (cu, cE, cN, cm, ci) in enumerate((("url_umbra", "umbra_dE_m", "umbra_dN_m", "umbra_mirada", "umbra"),
+                                                  ("url_umbra2", "umbra2_dE_m", "umbra2_dN_m", "umbra2_mirada", "umbra2")), start=1):
+            url = f.get(cu)
+            if not (isinstance(url, str) and url):
+                continue
+            dE_ = float(f.get(cE)) if pd.notna(f.get(cE)) else 0.0
+            dN_ = float(f.get(cN)) if pd.notna(f.get(cN)) else 0.0
+            mir = f.get(cm) if isinstance(f.get(cm), str) and f.get(cm) else ("left" if "left" in str(f.get(ci)) else "right")
+            lo_ = lon + dE_ / (111320 * np.cos(np.radians(lat))); la_ = lat + dN_ / 111320
+            try:
+                if self._si(f.get("umbra_relieve_corregido"), True):
+                    a, _ = self._umbra_orto(url, lo_, la_, lado, n=n, invertir=self._si(f.get("umbra_invertido"), False))
+                else:
+                    a = self._recorte(url, lo_, la_, lado, bandas=(1,), n=n)[0]
+                escribir(f"umbra{k}_{mir}", a[None], [f"umbra{k}_{mir}_amplitud"])
+            except Exception as e:
+                errores[f"umbra{k}"] = str(e)[:120]
+        try:
+            escribir("dem", self._dem(lon, lat, lado, n)[None], ["altura_m"], nodata=None)
+        except Exception as e:
+            errores["dem"] = str(e)[:120]
+        dlo = lado / 2 / (111320 * np.cos(np.radians(lat))); dla = lado / 2 / 111320
+        dv = self.danio[self.danio.intersects(_bx(lon - dlo, lat - dla, lon + dlo, lat + dla))]
+        if len(dv):
+            dv.to_crs(32619).to_file(f"{d}/edificios_danio.gpkg", layer="edificios_danio", driver="GPKG")
+            hechos["edificios_danio"] = f"{len(dv)} edificios"
+        meta = {k_: (None if (isinstance(v, float) and np.isnan(v)) else v) for k_, v in f.items()}
+        meta.update(pixel_m=lado / n, n_pix=n, crs="EPSG:32619", archivos=hechos, errores=errores,
+                    nota_malla="todos los .tif comparten malla: se apilan directamente / all .tif share one grid")
+        with open(f"{d}/meta.json", "w", encoding="utf-8") as o:
+            json.dump(meta, o, ensure_ascii=False, indent=1, default=str)
+        return f"{len(hechos)} archivos en {d}" + (f" · ⚠️ errores: {errores}" if errores else "")
+
+    def cargar(self, config):
+        """Devuelve {nombre: arreglo (bandas, filas, cols)} de una configuración, más 'meta' / returns the chips of one configuration."""
+        import glob, rasterio
+        d = f"{self.recortes}/{config}"
+        out = {"meta": json.load(open(f"{d}/meta.json", encoding="utf-8"))}
+        for f in sorted(glob.glob(f"{d}/*.tif")):
+            with rasterio.open(f) as r:
+                out[os.path.basename(f)[:-4]] = r.read()
+        return out
+
     def _rgb(self, a):
         a = np.moveaxis(a[:3], 0, -1)
         v = a[a > 0]
@@ -245,6 +346,7 @@ class Explorador:
         bver, busar = w.Button(description="Ver / show", button_style="info"), w.Button(description="Usar esta / use", button_style="success")
         bborrar, blista = w.Button(description="Borrar última / undo", button_style="warning"), w.Button(description="Ver guardadas / list")
         tnota = w.Text(description="Nota", placeholder="p. ej. ventana amplia / zoom edificio")
+        grec = w.Checkbox(value=True, description="Guardar recortes con todas las bandas (GeoTIFF) / save multiband chips", indent=False)
         out, msg = w.Output(), w.HTML()
         centro = {"lat": None, "lon": None}                         # centro actual de la ventana (se mueve con el ratón)
         paso = w.IntText(value=50, description="paso (m)", layout=w.Layout(width="160px"))
@@ -459,18 +561,34 @@ class Explorador:
                         umbra2=(dum2.label if dum2.value else ""), url_umbra2=(dum2.value or ""),
                         umbra2_mirada=(("left" if "left" in dum2.label else "right") if dum2.value else ""),
                         umbra2_dE_m=(dE2.value if dum2.value else np.nan), umbra2_dN_m=(dN2.value if dum2.value else np.nan), nota=tnota.value, fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
+            repetida = ""
             if len(prev):
                 igual = (prev.zona == fila["zona"]) & (prev.ventana_m == fila["ventana_m"]) & (prev.lat.round(5) == round(fila["lat"], 5)) & (prev.lon.round(5) == round(fila["lon"], 5)) & (prev.url_antes == fila["url_antes"]) &                         (prev.url_despues == fila["url_despues"]) & (prev.url_umbra == fila["url_umbra"]) & (prev.get("url_umbra2", pd.Series("", index=prev.index)).fillna("") == fila["url_umbra2"])
-                if igual.any():
-                    msg.value = f"⚠️ Esa configuración de <b>{dz.value}</b> ya estaba guardada (no se duplica)."; return
-            n_zona = int((prev.zona == dz.value).sum()) + 1 if len(prev) else 1
-            fila["config"] = f"{dz.value}-{n_zona}"                     # Z1-1, Z1-2, … / configuration id
+                if igual.any() and "config" in prev:                  # se guarda igual (otra composición), solo se avisa
+                    repetida = str(prev.loc[igual, "config"].iloc[-1])
+            # número siguiente SIN choques aunque se haya borrado alguna / next number, no clashes after deletions
+            usados = prev.config.dropna().astype(str).str.extract(rf"^{dz.value}-(\d+)$")[0].dropna().astype(int) if len(prev) and "config" in prev else pd.Series([], dtype=int)
+            fila["config"] = f"{dz.value}-{(usados.max() + 1) if len(usados) else 1}"   # Z1-1, Z1-2, … / configuration id
+            # celda candidata donde está REALMENTE el centro (si se arrastró la ventana fuera de la zona elegida)
+            dd = (self.zonas.lat - centro["lat"]) ** 2 + ((self.zonas.lon - centro["lon"]) * np.cos(np.radians(centro["lat"]))) ** 2
+            fila["zona_del_centro"] = str(self.zonas.zona.iloc[int(np.argmin(dd.values))])
+            fila["repetida_de"] = repetida
             if self._fig is not None:
                 self._fig.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{dl.value}m.png", dpi=150)
                 fila["captura"] = f"ELEGIDA_{fila['config']}_{dl.value}m.png"
-            pd.concat([prev, pd.DataFrame([fila])], ignore_index=True).to_csv(self.salida, index=False)
-            msg.value = (f"✅ Guardada <b>{fila['config']}</b> (ventana {dl.value} m) · {fila['edificios_danados']} edificios dañados en la ventana "
-                         f"({fila['destruidos']} destruidos) · total {len(prev) + 1} configuraciones")
+            todo = pd.concat([prev, pd.DataFrame([fila])], ignore_index=True)
+            todo.to_csv(self.salida, index=False)
+            n_z = int((todo.zona == dz.value).sum())
+            txt = (f"✅ Guardada <b>{fila['config']}</b> (ventana {dl.value} m) · {fila['edificios_danados']} edificios dañados en la ventana "
+                   f"({fila['destruidos']} destruidos) · {n_z} composiciones de {dz.value} · total {len(todo)}"
+                   + (f" · (misma ventana y escenas que {repetida})" if repetida else ""))
+            msg.value = txt
+            if grec.value:
+                msg.value = txt + " · guardando recortes multibanda… / saving chips…"
+                try:
+                    msg.value = txt + " · 📦 " + self.guardar_recortes(fila)
+                except Exception as e:
+                    msg.value = txt + f" · ⚠️ recortes no guardados: {str(e)[:100]} (reintente con ex.guardar_recortes())"
 
         def borrar(_):
             if not os.path.exists(self.salida):
@@ -486,14 +604,14 @@ class Explorador:
                 clear_output(wait=True)
                 if os.path.exists(self.salida):
                     t = pd.read_csv(self.salida)
-                    cols = [c for c in ("config", "zona", "ventana_m", "antes", "despues", "umbra", "nota") if c in t]
+                    cols = [c for c in ("config", "zona", "zona_del_centro", "ventana_m", "edificios_danados", "umbra_mirada", "umbra2_mirada", "nota") if c in t]
                     display(t[cols])
                 else:
                     print("Aún no hay configuraciones guardadas / nothing saved yet")
 
         dz.observe(opciones, names="value"); bver.on_click(ver); busar.on_click(usar); bborrar.on_click(borrar); blista.on_click(listar)
         opciones()
-        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, dum2, w.VBox([w.HTML('<b>⚙️ Alinear Umbra (X) con el óptico</b> — Umbra GEC no está corregido por relieve: muévalo hasta que calles y edificios coincidan'), w.HBox([dE, dN]), w.HBox([dE2, dN2]), w.HBox([bauto, bcero, corr, inv_])], layout=w.Layout(border='1px solid #0072B2', padding='4px', margin='4px 0')), tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
+        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, dum2, w.VBox([w.HTML('<b>⚙️ Alinear Umbra (X) con el óptico</b> — Umbra GEC no está corregido por relieve: muévalo hasta que calles y edificios coincidan'), w.HBox([dE, dN]), w.HBox([dE2, dN2]), w.HBox([bauto, bcero, corr, inv_])], layout=w.Layout(border='1px solid #0072B2', padding='4px', margin='4px 0')), tnota, grec, w.HBox([bver, busar, bborrar, blista]), msg, out]
         if mapa_w is not None:
             caja.insert(1, mapa_w)
         display(w.VBox(caja))

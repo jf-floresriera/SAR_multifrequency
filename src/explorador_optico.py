@@ -29,6 +29,10 @@ VANTOR = "https://vantor-opendata.s3.amazonaws.com/events/Venezuela-Earthquake-J
 PLANET = "https://data.source.coop/planet/disasterdata/venezuela-earthquake-2026-06-24"
 UMBRA_HTTPS = "https://umbra-open-data-catalog.s3.us-west-2.amazonaws.com/"
 MOSAICO_PRE = f"{PLANET}/pre-event/quarterly-mosaic/quarterly-mosaic-2026Q1.tif"
+# Umbra GEC: error de geolocalización de pocos m en terreno plano; el relieve (h·cot θ) aquí ≤ ~60 m → no se buscan desfases mayores.
+# Si la coincidencia es débil (< CONF_MIN σ) se deja el desfase en 0: mejor sin mover que movido a un falso máximo.
+RADIO_ALINEACION_M = 60.0
+CONF_MIN = 6.0
 
 
 def _reparar_main():
@@ -310,20 +314,21 @@ class Explorador:
                     escribir(clave, a, [f"{clave}_b{i}" for i in range(1, a.shape[0] + 1)])
                 except Exception as e:
                     errores[clave] = str(e)[:120]
-        for k, (cu, cE, cN, cm, ci) in enumerate((("url_umbra", "umbra_dE_m", "umbra_dN_m", "umbra_mirada", "umbra"),
-                                                  ("url_umbra2", "umbra2_dE_m", "umbra2_dN_m", "umbra2_mirada", "umbra2")), start=1):
-            url = f.get(cu)
+        for k in range(1, 6):
+            pre_ = "umbra" if k == 1 else f"umbra{k}"
+            url = f.get(f"url_{pre_}")
             if not (isinstance(url, str) and url):
                 continue
-            dE_ = float(f.get(cE)) if pd.notna(f.get(cE)) else 0.0
-            dN_ = float(f.get(cN)) if pd.notna(f.get(cN)) else 0.0
-            mir = f.get(cm) if isinstance(f.get(cm), str) and f.get(cm) else ("left" if "left" in str(f.get(ci)) else "right")
+            dE_ = float(f.get(f"{pre_}_dE_m")) if pd.notna(f.get(f"{pre_}_dE_m")) else 0.0
+            dN_ = float(f.get(f"{pre_}_dN_m")) if pd.notna(f.get(f"{pre_}_dN_m")) else 0.0
+            mir = f.get(f"{pre_}_mirada") if isinstance(f.get(f"{pre_}_mirada"), str) and f.get(f"{pre_}_mirada") else \
+                ("left" if "left" in str(f.get(pre_)) else "right")
+            corr_ = self._si(f.get(f"{pre_}_relieve_corregido", f.get("umbra_relieve_corregido")), True)
+            inv__ = self._si(f.get(f"{pre_}_invertido", f.get("umbra_invertido")), False)
             lo_ = lon + dE_ / (111320 * np.cos(np.radians(lat))); la_ = lat + dN_ / 111320
             try:
-                if self._si(f.get("umbra_relieve_corregido"), True):
-                    a, _ = self._umbra_orto(url, lo_, la_, lado, n=n, invertir=self._si(f.get("umbra_invertido"), False))
-                else:
-                    a = self._recorte(url, lo_, la_, lado, bandas=(1,), n=n)[0]
+                a = self._umbra_orto(url, lo_, la_, lado, n=n, invertir=inv__)[0] if corr_ else \
+                    self._recorte(url, lo_, la_, lado, bandas=(1,), n=n)[0]
                 escribir(f"umbra{k}_{mir}", a[None], [f"umbra{k}_{mir}_amplitud"])
             except Exception as e:
                 errores[f"umbra{k}"] = str(e)[:120]
@@ -368,8 +373,8 @@ class Explorador:
 
     def _escenas(self, lon, lat):
         """Escenas por defecto en un punto: ANTES = Vantor pre con menos nubes (si no, mosaico Planet); DESPUÉS = Planet SkySat
-        (si no, Vantor post con menos nubes); UMBRA 1 = mirada izquierda de mayor incidencia; UMBRA 2 = mirada derecha.
-        Default scenes at a point."""
+        (si no, Vantor post con menos nubes); UMBRA = TODAS las que cubren el punto, primero mirada izquierda y mayor incidencia.
+        Default scenes at a point; all Umbra scenes covering it."""
         from shapely.geometry import Point
         p = Point(lon, lat)
         vp = self.vantor[(self.vantor.fase == "pre") & self.vantor.contains(p)].sort_values(["nubes", "fecha"], ascending=[True, False])
@@ -382,117 +387,164 @@ class Explorador:
             vq = self.vantor[(self.vantor.fase == "post") & self.vantor.contains(p)].sort_values("nubes")
             post = (f"Vantor {vq.iloc[0].fecha} (nubes {vq.iloc[0].nubes}%)", vq.iloc[0].url) if len(vq) else ("", None)
         um = self.umbra[self.umbra.contains(p)].copy()
-        lab = lambda x: f"Umbra {str(x.inicio_utc)[:16]} · {x.satelite} · inc {x.incidencia_deg:.0f}° · {x.direccion_mirada}"
-        izq = um[um.direccion_mirada.astype(str).str.contains("left")].sort_values("incidencia_deg", ascending=False)
-        der = um[um.direccion_mirada.astype(str).str.contains("right")].sort_values("incidencia_deg", ascending=False)
-        u1 = (lab(izq.iloc[0]), izq.iloc[0].url) if len(izq) else ((lab(der.iloc[0]), der.iloc[0].url) if len(der) else ("", None))
-        u2 = (lab(der.iloc[0]), der.iloc[0].url) if len(izq) and len(der) else ("", None)
-        return dict(antes=pre, despues=post, umbra1=u1, umbra2=u2)
+        um["_der"] = um.direccion_mirada.astype(str).str.contains("right")
+        um = um.sort_values(["_der", "incidencia_deg"], ascending=[True, False])
+        umbras = [(f"Umbra {str(x.inicio_utc)[:16]} · {x.satelite} · inc {x.incidencia_deg:.0f}° · {x.direccion_mirada}", x.url)
+                  for x in um.itertuples()]
+        return dict(antes=pre, despues=post, umbras=umbras)
 
-    def _alinear_umbra(self, url_post, url_u, lon, lat, lado, corregir=True, invertir=False):
-        """ΔE, ΔN (m) y confianza de una Umbra respecto al óptico DESPUÉS por NMI (igual que «Alinear auto»)."""
+    def _alinear_umbra(self, url_post, url_u, lon, lat, lado=800, variantes=("dem", "sin", "dem_inv")):
+        """Alineación AUTOMÁTICA de una Umbra con el óptico DESPUÉS. Prueba varias correcciones de relieve
+        (dem = corrección con DEM; sin = ninguna; dem_inv = sentido invertido) y, para cada una, el desplazamiento que maximiza la
+        información mutua (NMI) en ±150 m. Se queda con la combinación de mayor puntaje. Devuelve dict(dE, dN, conf, variante).
+        Automatic alignment: tries terrain-correction variants and NMI shift search, keeps the best."""
+        from scipy.ndimage import gaussian_filter, sobel, median_filter
         n = 250; px = lado / n
-        mp = int(round(min(150.0, 0.4 * lado) / px)); nb = n + 2 * mp
+        mp = int(round(min(RADIO_ALINEACION_M, 0.4 * lado) / px)); nb = n + 2 * mp   # búsqueda limitada a lo físicamente posible
         o = self._recorte(url_post, lon, lat, lado, n=n)[:3].mean(0); o = np.where(o > 0, o, np.nan)
-        u = self._umbra_orto(url_u, lon, lat, nb * px, n=nb, invertir=invertir)[0] if corregir else \
-            self._recorte(url_u, lon, lat, nb * px, bandas=(1,), n=nb)[0]
-        val = np.isfinite(u) & (u > 0)
-        if val[mp:mp + n, mp:mp + n].mean() < 0.3 or not np.isfinite(o).any():
-            return 0, 0, np.nan
-        u = np.where(val, 10 * np.log10(np.where(val, u, 1.0)), np.nan)
-        o = np.where(np.isfinite(o), o, np.nanmedian(o)); u = np.where(np.isfinite(u), u, np.nanmedian(u))
-        dy, dx, conf = _registrar_nmi(o, u, mp)
-        return int(np.clip(round(dx * px / 5) * 5, -300, 300)), int(np.clip(round(-dy * px / 5) * 5, -300, 300)), conf
+        if not np.isfinite(o).any():
+            return dict(dE=0, dN=0, conf=np.nan, variante="dem", puntaje=np.nan)
+        o = np.where(np.isfinite(o), o, np.nanmedian(o))
+        mejor = None
+        for v in variantes:
+            u = self._recorte(url_u, lon, lat, nb * px, bandas=(1,), n=nb)[0] if v == "sin" else \
+                self._umbra_orto(url_u, lon, lat, nb * px, n=nb, invertir=(v == "dem_inv"))[0]
+            val = np.isfinite(u) & (u > 0)
+            if val[mp:mp + n, mp:mp + n].mean() < 0.3:
+                continue
+            u = np.where(val, 10 * np.log10(np.where(val, u, 1.0)), np.nan); u = np.where(np.isfinite(u), u, np.nanmedian(u))
+            dy, dx, conf = _registrar_nmi(o, u, mp)
+            # puntaje absoluto en la posición elegida, comparable entre variantes
+            o1 = gaussian_filter(o, 1.0); s1 = median_filter(u, 3)
+            sub = s1[mp + dy:mp + dy + n, mp + dx:mp + dx + n]
+            pun = _nmi(o1, sub) + _nmi(np.hypot(sobel(o1, 0), sobel(o1, 1)),
+                                       np.hypot(sobel(gaussian_filter(sub, 1.0), 0), sobel(gaussian_filter(sub, 1.0), 1)))
+            ok_ = conf >= CONF_MIN
+            r = dict(dE=int(round(dx * px / 5) * 5) if ok_ else 0, dN=int(round(-dy * px / 5) * 5) if ok_ else 0,
+                     conf=conf, variante=v, puntaje=pun)
+            if mejor is None or pun > mejor["puntaje"]:
+                mejor = r
+        return mejor or dict(dE=0, dN=0, conf=np.nan, variante="dem", puntaje=np.nan)
 
-    def lote(self, puntos, prefijo="S", corregir=True, alinear=True, contornos=True, recortes=True, ancho=16):
-        """Para cada punto {lat, lon, lado (m), nombre opcional, y opcionalmente url_antes/url_despues/url_umbra/url_umbra2}:
-        elige escenas, alinea Umbra (NMI), dibuja la vista ES/EN, la guarda como composición en seleccion_zonas_danio.csv
-        con sus recortes multibanda, y al final arma la LÁMINA de todos los sitios (ES/EN, png/pdf/eps).
-        Batch: one composition per point, then a combined plate of all sites."""
+    def _leer_umbra(self, url, lon, lat, lado, al, n=500):
+        lo_ = lon + al["dE"] / (111320 * np.cos(np.radians(lat))); la_ = lat + al["dN"] / 111320
+        if al["variante"] == "sin":
+            return self._recorte(url, lo_, la_, lado, bandas=(1,), n=n)[0], "sin corrección de relieve"
+        return self._umbra_orto(url, lo_, la_, lado, n=n, invertir=(al["variante"] == "dem_inv"))
+
+    def lote(self, puntos, prefijo="S", lados=(500, 1000, 7000), umbra_inc=((48, "left"), (27, "right")), min_umbra=None, alinear=True, contornos=True, verificar=True,
+             recortes=False, ancho=18):
+        """Para cada punto {lat, lon, nombre opcional}: SOLO si lo cubren al menos `min_umbra` escenas Umbra, alinea cada Umbra
+        automáticamente (una vez, en 800 m alrededor del centro) y dibuja el sitio con CADA tamaño de ventana de `lados`
+        (antes | después | todas las Umbra). Cada tamaño se guarda como composición; al final, una lámina ES/EN por tamaño.
+        Recortes multibanda: recortes=True, o después con ex.guardar_recortes(configs=[...]) para las que elija.
+        Batch: only sites covered by ≥ min_umbra Umbra scenes; one composition per window size; one plate per size."""
         import matplotlib.pyplot as plt
         from IPython.display import display
         from pyproj import Transformer
         from shapely.geometry import box as _bx
         to_utm = Transformer.from_crs(4326, 32619, always_xy=True)
-        filas, sitios = [], []
+        filas, por_lado = [], {int(l): [] for l in lados}
         for i, pt in enumerate(puntos, start=1):
-            lat, lon, lado = float(pt["lat"]), float(pt["lon"]), float(pt.get("lado", 1000))
+            lat, lon = float(pt["lat"]), float(pt["lon"])
             nombre = pt.get("nombre", f"{prefijo}{i}")
             esc = self._escenas(lon, lat)
-            for k_, c_ in (("antes", "url_antes"), ("despues", "url_despues"), ("umbra1", "url_umbra"), ("umbra2", "url_umbra2")):
-                if pt.get(c_):
-                    esc[k_] = (pt.get(c_.replace("url_", "etiqueta_"), pt[c_].split("/")[-1]), pt[c_])
-            print(f"— {nombre} ({lat:.5f}, {lon:.5f}, {lado:.0f} m): antes «{esc['antes'][0]}» · después «{esc['despues'][0]}» · "
-                  f"Umbra 1 «{esc['umbra1'][0] or 'ninguna'}» · Umbra 2 «{esc['umbra2'][0] or 'ninguna'}»")
-            desf = {}
-            for k in (1, 2):
-                url_u = esc[f"umbra{k}"][1]
-                if url_u and alinear and esc["despues"][1]:
+            if umbra_inc:                                         # SOLO las escenas pedidas (p. ej. 48° izq. y 27° der.)
+                import re as _re
+                elegidas = []
+                for inc_, mir_ in umbra_inc:
+                    cand = [u for u in esc["umbras"] if mir_ in u[0] and abs(float(_re.search(r"inc (\d+)", u[0]).group(1)) - inc_) <= 1.5]
+                    if cand:
+                        elegidas.append(cand[0])
+                if len(elegidas) < len(umbra_inc):
+                    print(f"✗ {nombre} ({lat:.5f}, {lon:.5f}): no tiene todas las Umbra pedidas {list(umbra_inc)} → se omite / skipped")
+                    continue
+                esc["umbras"] = elegidas
+            if len(esc["umbras"]) < (min_umbra or 1):
+                print(f"✗ {nombre} ({lat:.5f}, {lon:.5f}): solo {len(esc['umbras'])} escena(s) Umbra (< {min_umbra or 1}) → se omite / skipped")
+                continue
+            print(f"✓ {nombre} ({lat:.5f}, {lon:.5f}): antes «{esc['antes'][0]}» · después «{esc['despues'][0]}» · {len(esc['umbras'])} Umbra")
+            alin = []
+            for k, (lab_u, url_u) in enumerate(esc["umbras"], start=1):
+                al = dict(dE=0, dN=0, conf=np.nan, variante="dem", puntaje=np.nan)
+                if alinear and esc["despues"][1]:
                     try:
-                        desf[k] = self._alinear_umbra(esc["despues"][1], url_u, lon, lat, lado, corregir)
+                        al = self._alinear_umbra(esc["despues"][1], url_u, lon, lat)
                     except Exception as e:
-                        desf[k] = (0, 0, np.nan); print(f"   alineación Umbra {k} falló: {str(e)[:80]}")
-                    print(f"   Umbra {k}: ΔE {desf[k][0]} m, ΔN {desf[k][1]} m, confianza {desf[k][2]:.1f}σ"
-                          + (" (baja: revisar)" if not (desf[k][2] >= 6) else ""))
-                else:
-                    desf[k] = (0, 0, np.nan)
-            cx, cy = to_utm.transform(lon, lat)
-            dv_ = self.danio.to_crs(32619)
-            dv_ = dv_[dv_.intersects(_bx(cx - lado / 2, cy - lado / 2, cx + lado / 2, cy + lado / 2))]
-            capas = []
-            for tes, ten, clave, k_u in (("Antes", "Before", "antes", 0), ("Después", "After", "despues", 0),
-                                         ("Banda X (Umbra 1)", "X-band (Umbra 1)", "umbra1", 1), ("Banda X (Umbra 2)", "X-band (Umbra 2)", "umbra2", 2)):
-                lab, url = esc[clave]
-                c = dict(tit_es=tes, tit_en=ten, sar=k_u > 0, img=None, nota="", error="", lab=lab)
-                if url:
+                        print(f"   alineación Umbra {k} falló: {str(e)[:80]}")
+                alin.append(al)
+                print(f"   Umbra {k} ({lab_u.split('·')[-2].strip()}, {lab_u.split('·')[-1].strip()}): ΔE {al['dE']} m, ΔN {al['dN']} m, "
+                      f"corrección «{al['variante']}», confianza {al['conf']:.1f}σ" + ("" if al["conf"] >= CONF_MIN else " (débil: desfase dejado en 0)"))
+            for lado in lados:
+                lado = float(lado)
+                cx, cy = to_utm.transform(lon, lat)
+                dv_ = self.danio.to_crs(32619)
+                dv_ = dv_[dv_.intersects(_bx(cx - lado / 2, cy - lado / 2, cx + lado / 2, cy + lado / 2))]
+                capas = []
+                for tes, ten, (lab, url) in (("Antes", "Before", esc["antes"]), ("Después", "After", esc["despues"])):
+                    c = dict(tit_es=tes, tit_en=ten, sar=False, img=None, nota="", error="", lab=lab)
                     try:
-                        if k_u:
-                            dEk, dNk = desf[k_u][:2]
-                            lo_ = lon + dEk / (111320 * np.cos(np.radians(lat))); la_ = lat + dNk / 111320
-                            a0, c["nota"] = (self._umbra_orto(url, lo_, la_, lado) if corregir else
-                                             (self._recorte(url, lo_, la_, lado, bandas=(1,))[0], "sin corrección de relieve"))
-                            c["img"] = self._sar(a0[None]); c["nota"] += f" · ΔE {dEk} m, ΔN {dNk} m"
-                        else:
-                            c["img"] = self._rgb(self._recorte(url, lon, lat, lado, bandas=(1, 2, 3)))
+                        c["img"] = self._rgb(self._recorte(url, lon, lat, lado, bandas=(1, 2, 3))) if url else None
                     except Exception as e:
                         c["error"] = str(e)[:60]
-                capas.append(c)
-            por_clase = dv_["clase"].astype(str).value_counts().to_dict() if "clase" in dv_ else {}
-            mir = lambda t: ("left" if "left" in t else "right") if t else ""
-            fila = dict(zona=nombre, lat=round(lat, 6), lon=round(lon, 6), ventana_m=lado, edificios_danados=int(len(dv_)),
-                        destruidos=int(sum(v for k, v in por_clase.items() if "destru" in k.lower())),
-                        danados=int(sum(v for k, v in por_clase.items() if "dañ" in k.lower() or "dan" in k.lower())),
-                        umbra_dE_m=desf[1][0], umbra_dN_m=desf[1][1], umbra_confianza=desf[1][2],
-                        umbra_relieve_corregido=corregir, umbra_invertido=False,
-                        antes=esc["antes"][0], url_antes=esc["antes"][1], despues=esc["despues"][0], url_despues=esc["despues"][1],
-                        umbra=esc["umbra1"][0], url_umbra=esc["umbra1"][1] or "", umbra_mirada=mir(esc["umbra1"][0]),
-                        umbra2=esc["umbra2"][0], url_umbra2=esc["umbra2"][1] or "", umbra2_mirada=mir(esc["umbra2"][0]),
-                        umbra2_dE_m=desf[2][0] if esc["umbra2"][1] else np.nan, umbra2_dN_m=desf[2][1] if esc["umbra2"][1] else np.nan,
-                        umbra2_confianza=desf[2][2], nota=pt.get("nota", "lote"), fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
-            prev = pd.read_csv(self.salida) if os.path.exists(self.salida) else pd.DataFrame()
-            usados = prev.config.dropna().astype(str).str.extract(rf"^{nombre}-(\d+)$")[0].dropna().astype(int) \
-                if len(prev) and "config" in prev else pd.Series([], dtype=int)
-            fila["config"] = f"{nombre}-{(usados.max() + 1) if len(usados) else 1}"
-            d = f"{self.recortes}/{fila['config']}"; os.makedirs(d, exist_ok=True)
-            for idi in ("es", "en"):
-                f_ = self._figura(capas, idi, cx, cy, lado, dv_ if contornos else dv_.iloc[:0], fila, ancho)
-                f_.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{int(lado)}m_{idi}.png", dpi=150)
-                f_.savefig(f"{d}/vista_{fila['config']}_{idi}.png", dpi=150)
-                if idi == "es":
-                    display(f_)
-                plt.close(f_)
-            fila["captura"] = f"ELEGIDA_{fila['config']}_{int(lado)}m_es.png | _en.png"
-            pd.concat([prev, pd.DataFrame([fila])], ignore_index=True).to_csv(self.salida, index=False)
-            if recortes:
-                try:
-                    print("   📦", self.guardar_recortes(fila))
-                except Exception as e:
-                    print(f"   ⚠️ recortes no guardados: {str(e)[:100]}")
-            filas.append(fila); sitios.append((fila, capas, cx, cy, dv_ if contornos else dv_.iloc[:0]))
-        if sitios:
-            self.lamina(sitios)
-        return pd.DataFrame(filas)[["config", "lat", "lon", "ventana_m", "edificios_danados", "destruidos", "umbra_mirada",
-                                     "umbra_dE_m", "umbra_dN_m", "umbra2_mirada", "umbra2_dE_m", "umbra2_dN_m"]]
+                    capas.append(c)
+                for k, ((lab, url), al) in enumerate(zip(esc["umbras"], alin), start=1):
+                    c = dict(tit_es=f"Banda X (Umbra {k})", tit_en=f"X-band (Umbra {k})", sar=True, img=None, nota="", error="", lab=lab)
+                    try:
+                        a0, c["nota"] = self._leer_umbra(url, lon, lat, lado, al)
+                        c["img"] = self._sar(a0[None]); c["nota"] += f" · ΔE {al['dE']} m, ΔN {al['dN']} m"
+                    except Exception as e:
+                        c["error"] = str(e)[:60]
+                    capas.append(c)
+                if verificar and capas[1]["img"] is not None:     # SAR (magenta) sobre óptico (verde): si coinciden se ve gris/blanco
+                    for k, c_u in enumerate([c for c in capas if c["sar"] and c["img"] is not None][:2], start=1):
+                        og = np.nan_to_num(capas[1]["img"][..., :3].mean(-1)); sg = np.nan_to_num(c_u["img"])
+                        capas.append(dict(tit_es=f"Verificación Umbra {k} (SAR magenta / óptico verde)",
+                                          tit_en=f"Check Umbra {k} (SAR magenta / optical green)", sar=False, nota="", error="",
+                                          img=np.dstack([sg, og, sg]), lab=c_u["lab"]))
+                por_clase = dv_["clase"].astype(str).value_counts().to_dict() if "clase" in dv_ else {}
+                fila = dict(zona=nombre, lat=round(lat, 6), lon=round(lon, 6), ventana_m=lado, edificios_danados=int(len(dv_)),
+                            destruidos=int(sum(v for k_, v in por_clase.items() if "destru" in k_.lower())),
+                            danados=int(sum(v for k_, v in por_clase.items() if "dañ" in k_.lower() or "dan" in k_.lower())),
+                            antes=esc["antes"][0], url_antes=esc["antes"][1], despues=esc["despues"][0], url_despues=esc["despues"][1],
+                            nota=pt.get("nota", f"lote {int(lado)} m"), fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
+                for k, ((lab, url), al) in enumerate(zip(esc["umbras"], alin), start=1):
+                    pre_ = "umbra" if k == 1 else f"umbra{k}"
+                    fila.update({pre_: lab, f"url_{pre_}": url, f"{pre_}_mirada": "left" if "left" in lab else "right",
+                                 f"{pre_}_dE_m": al["dE"], f"{pre_}_dN_m": al["dN"], f"{pre_}_confianza": al["conf"],
+                                 f"{pre_}_relieve_corregido": al["variante"] != "sin", f"{pre_}_invertido": al["variante"] == "dem_inv"})
+                prev = pd.read_csv(self.salida) if os.path.exists(self.salida) else pd.DataFrame()
+                usados = prev.config.dropna().astype(str).str.extract(rf"^{nombre}-(\d+)$")[0].dropna().astype(int) \
+                    if len(prev) and "config" in prev else pd.Series([], dtype=int)
+                fila["config"] = f"{nombre}-{(usados.max() + 1) if len(usados) else 1}"
+                d = f"{self.recortes}/{fila['config']}"; os.makedirs(d, exist_ok=True)
+                dvc = dv_ if contornos else dv_.iloc[:0]
+                for idi in ("es", "en"):
+                    f_ = self._figura(capas, idi, cx, cy, lado, dvc, fila, ancho)
+                    f_.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{int(lado)}m_{idi}.png", dpi=150)
+                    f_.savefig(f"{d}/vista_{fila['config']}_{idi}.png", dpi=150)
+                    if idi == "es":
+                        display(f_)
+                    plt.close(f_)
+                fila["captura"] = f"ELEGIDA_{fila['config']}_{int(lado)}m_es.png | _en.png"
+                pd.concat([prev, pd.DataFrame([fila])], ignore_index=True).to_csv(self.salida, index=False)
+                with open(f"{d}/meta.json" if recortes else f"{d}/eleccion.json", "w", encoding="utf-8") as o_:
+                    json.dump({k_: (None if isinstance(v, float) and np.isnan(v) else v) for k_, v in fila.items()}, o_,
+                              ensure_ascii=False, indent=1, default=str)
+                if recortes:
+                    try:
+                        print("   📦", self.guardar_recortes(fila))
+                    except Exception as e:
+                        print(f"   ⚠️ recortes no guardados: {str(e)[:100]}")
+                print(f"   → {fila['config']}: ventana {int(lado)} m, {fila['edificios_danados']} edificios dañados")
+                filas.append(fila); por_lado[int(lado)].append((fila, capas, cx, cy, dvc))
+        for lado, sitios in por_lado.items():
+            if sitios:
+                self.lamina(sitios, nombre=f"lamina_destruccion_{lado}m")
+        if not filas:
+            print("Ningún sitio tiene las escenas Umbra pedidas / no site has the required Umbra scenes"); return pd.DataFrame()
+        t = pd.DataFrame(filas)
+        return t[[c for c in ("config", "zona", "lat", "lon", "ventana_m", "edificios_danados", "destruidos") if c in t]]
 
     def _figura(self, capas, idioma, cx, cy, lado, dv_, fila, ancho=16):
         """Una fila de paneles pegados (antes | después | X 1 | X 2) en un idioma / one compact row in one language."""
@@ -504,7 +556,7 @@ class Explorador:
             ax = fig.add_axes([i / k + 0.002, 0.005, 1 / k - 0.004, 1 - alto_tit - 0.01])
             self._dibujar_panel(ax, c, idioma, cx, cy, lado, dv_, barra=(i == 0))
             sub = self._traducir(c["lab"], idioma) + (f"\n{self._traducir(c['nota'], idioma)}" if c["nota"] else "")
-            ax.set_title(f"({'abcd'[i]}) {c['tit_es'] if idioma == 'es' else c['tit_en']}\n{sub}", fontsize=8, loc="left", pad=3)
+            ax.set_title(f"({chr(97 + i)}) {c['tit_es'] if idioma == 'es' else c['tit_en']}\n{sub}", fontsize=8, loc="left", pad=3)
         if idioma == "es":
             sup = f"{fila['zona']} · {fila['lat']:.5f}, {fila['lon']:.5f} · ventana {lado:.0f} m · {fila['edificios_danados']} edificios dañados (contornos rojos)"
         else:
@@ -538,17 +590,16 @@ class Explorador:
         """Lámina de todos los sitios: filas = sitios, columnas = antes | después | X izq. | X der.; ES y EN; png, pdf y eps.
         Combined plate (rows = sites), SRL width 7.2 in."""
         import matplotlib.pyplot as plt
-        nf, nc = len(sitios), 4
+        nf, nc = len(sitios), max(len(x[1]) for x in sitios)
         lado_p = (ancho - 0.35) / nc
         alto = nf * (lado_p + 0.05) + 0.2
         os.makedirs(f"{self.raiz}/04_figuras/suplemento", exist_ok=True)
         for idi in ("es", "en"):
             fig = plt.figure(figsize=(ancho, alto))
-            cab = (["Antes", "Después", "Banda X (Umbra 1)", "Banda X (Umbra 2)"] if idi == "es"
-                   else ["Before", "After", "X-band (Umbra 1)", "X-band (Umbra 2)"])
+            cab = [c["tit_es" if idi == "es" else "tit_en"].split(" (SAR")[0] for c in max((x[1] for x in sitios), key=len)]
             for r, (fila, capas, cx, cy, dv_) in enumerate(sitios):
                 y0 = 1 - (0.2 + (r + 1) * (lado_p + 0.05) - 0.05) / alto
-                for j, c in enumerate(capas[:4]):
+                for j, c in enumerate(capas[:nc]):
                     ax = fig.add_axes([(0.35 + j * lado_p) / ancho, y0, lado_p / ancho * 0.985, lado_p / alto])
                     self._dibujar_panel(ax, c, idi, cx, cy, float(fila["ventana_m"]), dv_, barra=(j == 0))
                     fecha = (c["lab"].split("·")[0].replace("Umbra ", "").replace("Planet SkySat ", "").replace("Vantor ", "")
@@ -556,9 +607,9 @@ class Explorador:
                     if c["sar"] and c["lab"]:
                         izq = "left" in c["lab"]
                         fecha += (" · izq." if izq else " · der.") if idi == "es" else (" · left" if izq else " · right")
-                    ax.text(0.02, 0.98, f"({chr(97 + r * 4 + j)}) {fecha}", transform=ax.transAxes, va="top", fontsize=6,
+                    ax.text(0.02, 0.98, f"({chr(97 + r * nc + j) if r * nc + j < 26 else chr(97 + (r * nc + j) // 26 - 1) + chr(97 + (r * nc + j) % 26)}) {fecha}", transform=ax.transAxes, va="top", fontsize=6,
                             bbox=dict(fc="white", alpha=0.8, lw=0, pad=0.8))
-                    if r == 0:
+                    if r == 0 and j < len(cab):
                         ax.set_title(cab[j], fontsize=7.5, pad=2)
                 fig.text(0.30 / ancho, y0 + lado_p / alto / 2,
                          f"{fila['zona']} · {fila['ventana_m']:.0f} m\n{fila['edificios_danados']} " + ("dañados" if idi == "es" else "damaged"),
@@ -731,7 +782,7 @@ class Explorador:
             lado = dl.value
             n = 250
             px = lado / n
-            mp = int(round(min(150.0, 0.4 * lado) / px))               # búsqueda hasta ±150 m / search radius
+            mp = int(round(min(RADIO_ALINEACION_M, 0.4 * lado) / px))   # búsqueda limitada a lo físicamente posible               # búsqueda hasta ±150 m / search radius
             o = self._recorte(dpost.value, centro["lon"], centro["lat"], lado, n=n)[:3].mean(0)
             o = np.where(o > 0, o, np.nan)
             nb = n + 2 * mp
@@ -743,7 +794,9 @@ class Explorador:
             o = np.where(np.isfinite(o), o, np.nanmedian(o)); u = np.where(np.isfinite(u), u, np.nanmedian(u))
             dy, dx, conf = _registrar_nmi(o, u, mp)
             dE_, dN_ = int(round(dx * px / 5) * 5), int(round(-dy * px / 5) * 5)
-            aviso = "" if conf >= 6 else " (confianza baja: revise a mano)"
+            aviso = ""
+            if not conf >= CONF_MIN:
+                dE_, dN_, aviso = 0, 0, f" → coincidencia débil (máx. en {int(round(dx * px))}, {int(round(-dy * px))} m): se deja en 0"
             return (int(np.clip(dE_, -300, 300)), int(np.clip(dN_, -300, 300))), f"confianza {conf:.1f}σ{aviso}"
 
         def auto(_=None):

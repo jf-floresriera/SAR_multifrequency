@@ -13,6 +13,7 @@ Uso en Colab (después de la celda #1) / usage:
     ex.panel()     # elegir zona, ventana (m) y escenas; «Ver» dibuja ANTES | DESPUÉS | UMBRA; «Usar» guarda la elección
 Cada «Usar» guarda una CONFIGURACIÓN (Z1-1, Z1-2…): la misma zona puede guardarse con otra ventana u otras escenas. «Borrar última» deshace; «Ver guardadas» lista.
 Cada «Usar» guarda además los RECORTES con TODAS sus bandas (GeoTIFF, misma malla UTM 19N) en 02_procesados/recortes_zonas/<config>/
+LOTE (sin panel): ex.lote([dict(lat=…, lon=…, lado=550), …]) elige escenas, alinea, guarda cada sitio y arma la lámina ES/EN.
 para hacer composiciones e índices: ex.cargar('Z1-3') los devuelve como arreglos; ex.guardar_recortes() rehace los que falten.
 Se guarda en 05_documentacion/seleccion_zonas_danio.csv. Capturas en 04_figuras/borradores/explorador/: mapa_zonas_candidatas.html, vista_*.png (cada «Ver») y ELEGIDA_<config>.png (cada «Usar»). No calcula métricas.
 """
@@ -352,6 +353,224 @@ class Explorador:
                 out[os.path.basename(f)[:-4]] = r.read()
         return out
 
+    # ------------------------------------------------------------ LOTE: varios sitios sin panel / batch of sites
+    @staticmethod
+    def _traducir(t, idioma):
+        t = str(t or "")
+        if idioma == "en":
+            t = t.replace("nubes", "clouds").replace("relieve corregido", "terrain-corrected").replace("h máx", "max h")
+            t = t.replace("sin corrección de relieve", "no terrain correction").replace("Planet mosaico", "Planet mosaic")
+            for sen in ("Planet SkySat", "Vantor", "Planet mosaic"):
+                if t.startswith(sen):
+                    return f"Optical ({sen})" + t[len(sen):]
+            return t
+        return t.replace("· left", "· mirada izquierda").replace("· right", "· mirada derecha")
+
+    def _escenas(self, lon, lat):
+        """Escenas por defecto en un punto: ANTES = Vantor pre con menos nubes (si no, mosaico Planet); DESPUÉS = Planet SkySat
+        (si no, Vantor post con menos nubes); UMBRA 1 = mirada izquierda de mayor incidencia; UMBRA 2 = mirada derecha.
+        Default scenes at a point."""
+        from shapely.geometry import Point
+        p = Point(lon, lat)
+        vp = self.vantor[(self.vantor.fase == "pre") & self.vantor.contains(p)].sort_values(["nubes", "fecha"], ascending=[True, False])
+        pre = (f"Vantor {vp.iloc[0].fecha} (nubes {vp.iloc[0].nubes}%)", vp.iloc[0].url) if len(vp) else ("Planet mosaico Q1-2026 (4,8 m)", MOSAICO_PRE)
+        pl = self.planet[self.planet.contains(p)] if len(self.planet) else self.planet
+        if len(pl):
+            pl = pl.sort_values("datetime") if "datetime" in pl else pl
+            post = (f"Planet SkySat {str(pl.iloc[0].datetime)[:16]}", pl.iloc[0].url)
+        else:
+            vq = self.vantor[(self.vantor.fase == "post") & self.vantor.contains(p)].sort_values("nubes")
+            post = (f"Vantor {vq.iloc[0].fecha} (nubes {vq.iloc[0].nubes}%)", vq.iloc[0].url) if len(vq) else ("", None)
+        um = self.umbra[self.umbra.contains(p)].copy()
+        lab = lambda x: f"Umbra {str(x.inicio_utc)[:16]} · {x.satelite} · inc {x.incidencia_deg:.0f}° · {x.direccion_mirada}"
+        izq = um[um.direccion_mirada.astype(str).str.contains("left")].sort_values("incidencia_deg", ascending=False)
+        der = um[um.direccion_mirada.astype(str).str.contains("right")].sort_values("incidencia_deg", ascending=False)
+        u1 = (lab(izq.iloc[0]), izq.iloc[0].url) if len(izq) else ((lab(der.iloc[0]), der.iloc[0].url) if len(der) else ("", None))
+        u2 = (lab(der.iloc[0]), der.iloc[0].url) if len(izq) and len(der) else ("", None)
+        return dict(antes=pre, despues=post, umbra1=u1, umbra2=u2)
+
+    def _alinear_umbra(self, url_post, url_u, lon, lat, lado, corregir=True, invertir=False):
+        """ΔE, ΔN (m) y confianza de una Umbra respecto al óptico DESPUÉS por NMI (igual que «Alinear auto»)."""
+        n = 250; px = lado / n
+        mp = int(round(min(150.0, 0.4 * lado) / px)); nb = n + 2 * mp
+        o = self._recorte(url_post, lon, lat, lado, n=n)[:3].mean(0); o = np.where(o > 0, o, np.nan)
+        u = self._umbra_orto(url_u, lon, lat, nb * px, n=nb, invertir=invertir)[0] if corregir else \
+            self._recorte(url_u, lon, lat, nb * px, bandas=(1,), n=nb)[0]
+        val = np.isfinite(u) & (u > 0)
+        if val[mp:mp + n, mp:mp + n].mean() < 0.3 or not np.isfinite(o).any():
+            return 0, 0, np.nan
+        u = np.where(val, 10 * np.log10(np.where(val, u, 1.0)), np.nan)
+        o = np.where(np.isfinite(o), o, np.nanmedian(o)); u = np.where(np.isfinite(u), u, np.nanmedian(u))
+        dy, dx, conf = _registrar_nmi(o, u, mp)
+        return int(np.clip(round(dx * px / 5) * 5, -300, 300)), int(np.clip(round(-dy * px / 5) * 5, -300, 300)), conf
+
+    def lote(self, puntos, prefijo="S", corregir=True, alinear=True, contornos=True, recortes=True, ancho=16):
+        """Para cada punto {lat, lon, lado (m), nombre opcional, y opcionalmente url_antes/url_despues/url_umbra/url_umbra2}:
+        elige escenas, alinea Umbra (NMI), dibuja la vista ES/EN, la guarda como composición en seleccion_zonas_danio.csv
+        con sus recortes multibanda, y al final arma la LÁMINA de todos los sitios (ES/EN, png/pdf/eps).
+        Batch: one composition per point, then a combined plate of all sites."""
+        import matplotlib.pyplot as plt
+        from IPython.display import display
+        from pyproj import Transformer
+        from shapely.geometry import box as _bx
+        to_utm = Transformer.from_crs(4326, 32619, always_xy=True)
+        filas, sitios = [], []
+        for i, pt in enumerate(puntos, start=1):
+            lat, lon, lado = float(pt["lat"]), float(pt["lon"]), float(pt.get("lado", 1000))
+            nombre = pt.get("nombre", f"{prefijo}{i}")
+            esc = self._escenas(lon, lat)
+            for k_, c_ in (("antes", "url_antes"), ("despues", "url_despues"), ("umbra1", "url_umbra"), ("umbra2", "url_umbra2")):
+                if pt.get(c_):
+                    esc[k_] = (pt.get(c_.replace("url_", "etiqueta_"), pt[c_].split("/")[-1]), pt[c_])
+            print(f"— {nombre} ({lat:.5f}, {lon:.5f}, {lado:.0f} m): antes «{esc['antes'][0]}» · después «{esc['despues'][0]}» · "
+                  f"Umbra 1 «{esc['umbra1'][0] or 'ninguna'}» · Umbra 2 «{esc['umbra2'][0] or 'ninguna'}»")
+            desf = {}
+            for k in (1, 2):
+                url_u = esc[f"umbra{k}"][1]
+                if url_u and alinear and esc["despues"][1]:
+                    try:
+                        desf[k] = self._alinear_umbra(esc["despues"][1], url_u, lon, lat, lado, corregir)
+                    except Exception as e:
+                        desf[k] = (0, 0, np.nan); print(f"   alineación Umbra {k} falló: {str(e)[:80]}")
+                    print(f"   Umbra {k}: ΔE {desf[k][0]} m, ΔN {desf[k][1]} m, confianza {desf[k][2]:.1f}σ"
+                          + (" (baja: revisar)" if not (desf[k][2] >= 6) else ""))
+                else:
+                    desf[k] = (0, 0, np.nan)
+            cx, cy = to_utm.transform(lon, lat)
+            dv_ = self.danio.to_crs(32619)
+            dv_ = dv_[dv_.intersects(_bx(cx - lado / 2, cy - lado / 2, cx + lado / 2, cy + lado / 2))]
+            capas = []
+            for tes, ten, clave, k_u in (("Antes", "Before", "antes", 0), ("Después", "After", "despues", 0),
+                                         ("Banda X (Umbra 1)", "X-band (Umbra 1)", "umbra1", 1), ("Banda X (Umbra 2)", "X-band (Umbra 2)", "umbra2", 2)):
+                lab, url = esc[clave]
+                c = dict(tit_es=tes, tit_en=ten, sar=k_u > 0, img=None, nota="", error="", lab=lab)
+                if url:
+                    try:
+                        if k_u:
+                            dEk, dNk = desf[k_u][:2]
+                            lo_ = lon + dEk / (111320 * np.cos(np.radians(lat))); la_ = lat + dNk / 111320
+                            a0, c["nota"] = (self._umbra_orto(url, lo_, la_, lado) if corregir else
+                                             (self._recorte(url, lo_, la_, lado, bandas=(1,))[0], "sin corrección de relieve"))
+                            c["img"] = self._sar(a0[None]); c["nota"] += f" · ΔE {dEk} m, ΔN {dNk} m"
+                        else:
+                            c["img"] = self._rgb(self._recorte(url, lon, lat, lado, bandas=(1, 2, 3)))
+                    except Exception as e:
+                        c["error"] = str(e)[:60]
+                capas.append(c)
+            por_clase = dv_["clase"].astype(str).value_counts().to_dict() if "clase" in dv_ else {}
+            mir = lambda t: ("left" if "left" in t else "right") if t else ""
+            fila = dict(zona=nombre, lat=round(lat, 6), lon=round(lon, 6), ventana_m=lado, edificios_danados=int(len(dv_)),
+                        destruidos=int(sum(v for k, v in por_clase.items() if "destru" in k.lower())),
+                        danados=int(sum(v for k, v in por_clase.items() if "dañ" in k.lower() or "dan" in k.lower())),
+                        umbra_dE_m=desf[1][0], umbra_dN_m=desf[1][1], umbra_confianza=desf[1][2],
+                        umbra_relieve_corregido=corregir, umbra_invertido=False,
+                        antes=esc["antes"][0], url_antes=esc["antes"][1], despues=esc["despues"][0], url_despues=esc["despues"][1],
+                        umbra=esc["umbra1"][0], url_umbra=esc["umbra1"][1] or "", umbra_mirada=mir(esc["umbra1"][0]),
+                        umbra2=esc["umbra2"][0], url_umbra2=esc["umbra2"][1] or "", umbra2_mirada=mir(esc["umbra2"][0]),
+                        umbra2_dE_m=desf[2][0] if esc["umbra2"][1] else np.nan, umbra2_dN_m=desf[2][1] if esc["umbra2"][1] else np.nan,
+                        umbra2_confianza=desf[2][2], nota=pt.get("nota", "lote"), fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
+            prev = pd.read_csv(self.salida) if os.path.exists(self.salida) else pd.DataFrame()
+            usados = prev.config.dropna().astype(str).str.extract(rf"^{nombre}-(\d+)$")[0].dropna().astype(int) \
+                if len(prev) and "config" in prev else pd.Series([], dtype=int)
+            fila["config"] = f"{nombre}-{(usados.max() + 1) if len(usados) else 1}"
+            d = f"{self.recortes}/{fila['config']}"; os.makedirs(d, exist_ok=True)
+            for idi in ("es", "en"):
+                f_ = self._figura(capas, idi, cx, cy, lado, dv_ if contornos else dv_.iloc[:0], fila, ancho)
+                f_.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{int(lado)}m_{idi}.png", dpi=150)
+                f_.savefig(f"{d}/vista_{fila['config']}_{idi}.png", dpi=150)
+                if idi == "es":
+                    display(f_)
+                plt.close(f_)
+            fila["captura"] = f"ELEGIDA_{fila['config']}_{int(lado)}m_es.png | _en.png"
+            pd.concat([prev, pd.DataFrame([fila])], ignore_index=True).to_csv(self.salida, index=False)
+            if recortes:
+                try:
+                    print("   📦", self.guardar_recortes(fila))
+                except Exception as e:
+                    print(f"   ⚠️ recortes no guardados: {str(e)[:100]}")
+            filas.append(fila); sitios.append((fila, capas, cx, cy, dv_ if contornos else dv_.iloc[:0]))
+        if sitios:
+            self.lamina(sitios)
+        return pd.DataFrame(filas)[["config", "lat", "lon", "ventana_m", "edificios_danados", "destruidos", "umbra_mirada",
+                                     "umbra_dE_m", "umbra_dN_m", "umbra2_mirada", "umbra2_dE_m", "umbra2_dN_m"]]
+
+    def _figura(self, capas, idioma, cx, cy, lado, dv_, fila, ancho=16):
+        """Una fila de paneles pegados (antes | después | X 1 | X 2) en un idioma / one compact row in one language."""
+        import matplotlib.pyplot as plt
+        k = len(capas)
+        fig = plt.figure(figsize=(ancho, ancho / k + 1.0))
+        alto_tit = 0.95 / (ancho / k + 1.0)
+        for i, c in enumerate(capas):
+            ax = fig.add_axes([i / k + 0.002, 0.005, 1 / k - 0.004, 1 - alto_tit - 0.01])
+            self._dibujar_panel(ax, c, idioma, cx, cy, lado, dv_, barra=(i == 0))
+            sub = self._traducir(c["lab"], idioma) + (f"\n{self._traducir(c['nota'], idioma)}" if c["nota"] else "")
+            ax.set_title(f"({'abcd'[i]}) {c['tit_es'] if idioma == 'es' else c['tit_en']}\n{sub}", fontsize=8, loc="left", pad=3)
+        if idioma == "es":
+            sup = f"{fila['zona']} · {fila['lat']:.5f}, {fila['lon']:.5f} · ventana {lado:.0f} m · {fila['edificios_danados']} edificios dañados (contornos rojos)"
+        else:
+            sup = f"{fila['zona']} · {fila['lat']:.5f}, {fila['lon']:.5f} · window {lado:.0f} m · {fila['edificios_danados']} damaged buildings (red outlines)"
+        fig.text(0.003, 0.995, sup, ha="left", va="top", fontsize=10)
+        return fig
+
+    def _dibujar_panel(self, ax, c, idioma, cx, cy, lado, dv_, barra=False):
+        from matplotlib.patches import Rectangle
+        ext = [cx - lado / 2, cx + lado / 2, cy - lado / 2, cy + lado / 2]
+        ax.set_xticks([]); ax.set_yticks([])
+        for sp in ax.spines.values():
+            sp.set_linewidth(0.4)
+        if c["img"] is not None:
+            ax.imshow(c["img"], cmap="gray" if c["sar"] else None, extent=ext, interpolation="nearest")
+            if len(dv_):
+                dv_.boundary.plot(ax=ax, color="#FF2A00", linewidth=0.5)
+        else:
+            ax.set_facecolor("#f2f2f2")
+            ax.text(0.5, 0.5, "sin escena" if idioma == "es" else "no scene", ha="center", va="center", transform=ax.transAxes,
+                    fontsize=8, color="#666666")
+        ax.set_xlim(ext[0], ext[1]); ax.set_ylim(ext[2], ext[3])
+        if barra:
+            b = 100 if lado <= 700 else (200 if lado <= 1500 else 500)
+            x0, y0 = ext[0] + 0.05 * lado, ext[2] + 0.05 * lado
+            ax.add_patch(Rectangle((x0, y0), b, 0.012 * lado, color="white", ec="black", lw=0.5))
+            ax.text(x0 + b / 2, y0 + 0.025 * lado, f"{b} m", ha="center", fontsize=7, color="white",
+                    bbox=dict(fc="black", alpha=0.4, lw=0, pad=0.8))
+
+    def lamina(self, sitios, nombre="lamina_destruccion", ancho=7.2):
+        """Lámina de todos los sitios: filas = sitios, columnas = antes | después | X izq. | X der.; ES y EN; png, pdf y eps.
+        Combined plate (rows = sites), SRL width 7.2 in."""
+        import matplotlib.pyplot as plt
+        nf, nc = len(sitios), 4
+        lado_p = (ancho - 0.35) / nc
+        alto = nf * (lado_p + 0.05) + 0.2
+        os.makedirs(f"{self.raiz}/04_figuras/suplemento", exist_ok=True)
+        for idi in ("es", "en"):
+            fig = plt.figure(figsize=(ancho, alto))
+            cab = (["Antes", "Después", "Banda X (Umbra 1)", "Banda X (Umbra 2)"] if idi == "es"
+                   else ["Before", "After", "X-band (Umbra 1)", "X-band (Umbra 2)"])
+            for r, (fila, capas, cx, cy, dv_) in enumerate(sitios):
+                y0 = 1 - (0.2 + (r + 1) * (lado_p + 0.05) - 0.05) / alto
+                for j, c in enumerate(capas[:4]):
+                    ax = fig.add_axes([(0.35 + j * lado_p) / ancho, y0, lado_p / ancho * 0.985, lado_p / alto])
+                    self._dibujar_panel(ax, c, idi, cx, cy, float(fila["ventana_m"]), dv_, barra=(j == 0))
+                    fecha = (c["lab"].split("·")[0].replace("Umbra ", "").replace("Planet SkySat ", "").replace("Vantor ", "")
+                             .split("(")[0].strip()[:10]) if c["lab"] else ""
+                    if c["sar"] and c["lab"]:
+                        izq = "left" in c["lab"]
+                        fecha += (" · izq." if izq else " · der.") if idi == "es" else (" · left" if izq else " · right")
+                    ax.text(0.02, 0.98, f"({chr(97 + r * 4 + j)}) {fecha}", transform=ax.transAxes, va="top", fontsize=6,
+                            bbox=dict(fc="white", alpha=0.8, lw=0, pad=0.8))
+                    if r == 0:
+                        ax.set_title(cab[j], fontsize=7.5, pad=2)
+                fig.text(0.30 / ancho, y0 + lado_p / alto / 2,
+                         f"{fila['zona']} · {fila['ventana_m']:.0f} m\n{fila['edificios_danados']} " + ("dañados" if idi == "es" else "damaged"),
+                         rotation=90, ha="right", va="center", fontsize=6.5)
+            for ext_ in ("png", "pdf", "eps"):
+                fig.savefig(f"{self.raiz}/04_figuras/suplemento/{nombre}_{idi}.{ext_}", dpi=300 if ext_ == "png" else None)
+            if idi == "es":
+                from IPython.display import display
+                display(fig)
+            plt.close(fig)
+        print(f"Lámina guardada / plate saved: {self.raiz}/04_figuras/suplemento/{nombre}_es|en.png|pdf|eps")
+
     def _rgb(self, a):
         a = np.moveaxis(a[:3], 0, -1)
         v = a[a > 0]
@@ -524,7 +743,7 @@ class Explorador:
             o = np.where(np.isfinite(o), o, np.nanmedian(o)); u = np.where(np.isfinite(u), u, np.nanmedian(u))
             dy, dx, conf = _registrar_nmi(o, u, mp)
             dE_, dN_ = int(round(dx * px / 5) * 5), int(round(-dy * px / 5) * 5)
-            aviso = "" if conf >= 3 else " (confianza baja: revise a mano)"
+            aviso = "" if conf >= 6 else " (confianza baja: revise a mano)"
             return (int(np.clip(dE_, -300, 300)), int(np.clip(dN_, -300, 300))), f"confianza {conf:.1f}σ{aviso}"
 
         def auto(_=None):

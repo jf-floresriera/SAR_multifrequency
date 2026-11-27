@@ -33,13 +33,14 @@ PASOS = [
     ("mosaico",     "C InSAR",      "mosaico_insar.py",             "Mosaico de frames/tracks NISAR vecinos (desfase igualado en el solape)", "Mosaic of adjacent NISAR frames/tracks (offset matched in overlap)"),
     ("comparacion", "C InSAR",      "comparacion_modelos.py",       "Figura de comparación de TODOS los modelos (misma ventana y escala)", "Comparison figure of ALL models (same window and scale)"),
     ("insar_metricas", "C InSAR",   "insar_metricas.py",            "Métricas y mapas/perfil COMPARABLES (misma escala y ventana)", "COMPARABLE metrics, maps and profile (same scale and window)"),
+    ("tablas",      "E Salida",     "tablas_articulo.py",           "Tablas del artículo ES/EN (datos, procesamiento, calidad tierra/mar, mosaicos, comparaciones)", "Paper tables ES/EN"),
     ("danio_ref",   "D Daño",       "danio_referencia.py",          "Daño de referencia HOTOSM + Copernicus EMS",         "Reference damage HOTOSM + Copernicus EMS"),
     ("vantor",      "D Daño",       "vantor_buscar.py",             "Óptico ~0,4 m ANTES/DESPUÉS (Vantor abierto) por sitio",  "~0.4 m optical PRE/POST (Vantor open data) per site"),
     ("danio_sitios", "D Daño",      "umbra_planet_sitios.py",       "Umbra × Planet por sitio (Fig. 8 y suplemento)",     "Umbra × Planet per site (Fig. 8 and supplement)"),
     ("exportar",    "E Salida",     "exportar_figuras_github.py",   "Preparar figuras para GitHub (sin Planet/Esri)",     "Prepare figures for GitHub (no Planet/Esri)"),
 ]
 IDS = [p[0] for p in PASOS]
-SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "mosaico", "comparacion", "insar_metricas"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
+SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "mosaico", "comparacion", "insar_metricas", "tablas"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
 
 # Hecho ANTES de este cuaderno (19-nov-2026), con la evidencia encontrada en Drive. Es evidencia de que el paso
 # se ejecutó, no una verificación del contenido de sus salidas. / Done BEFORE this notebook, with Drive evidence.

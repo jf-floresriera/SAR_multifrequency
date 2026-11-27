@@ -73,6 +73,14 @@ flowchart TD
 ### 4.5 P3 · Integración
 Regresión logística daño ~ distancia a la falla + gradiente de deformación (por banda), ROC/AUC y Moran de residuos; perfiles en infraestructura (aeropuerto, puerto, viaducto) (⬜).
 
+## 4.6 Cobertura parcial de las escenas: decisión metodológica
+Ninguna escena cubre toda la zona (p. ej. NISAR 061A solo el este; 162A el oeste; la mitad de cada huella es mar). No se descarta ninguna ni se «elige la mejor» a ojo: se aplica una regla explícita y se reporta la cobertura.
+1. **Zona de estudio fija** (ventana de la costa de La Guaira) y **solo tierra**: el mar se excluye siempre (es incoherente) y la cobertura se informa sobre tierra (Tabla S1).
+2. **Comparaciones solo en píxeles comunes**: C vs L se compara en Este/Vertical (no en LOS, porque cada sensor mira en otra dirección) y únicamente donde **ambas** bandas tienen dato sobre tierra; se informa el % común (Tabla S3).
+3. **Este/Vertical solo con geometría ascendente + descendente** en el mismo píxel. Dos ascendentes (NISAR 162A + 061A) no separan Este de Vertical: producían ±1–2 m sin sentido; corregido el 27-nov.
+4. **Mosaicos** (misma familia y dirección, desfase igualado en el solape, procedencia por pieza) **solo para mostrar** el patrón completo; las métricas se calculan en los productos individuales.
+5. Literatura: la unión por solape y la corrección de desfases entre tracks son práctica común (ver HANDOFF §0.38 y las fuentes citadas allí); no encontramos un protocolo publicado específico para comparar sensores con cobertura parcial, por eso la regla se declara explícitamente en el artículo.
+
 ## 5. Figuras y tablas (texto principal ≤ 10; suplemento sin límite)
 | Fig./Tabla | Contenido | Paso | Estado |
 |---|---|---|---|
@@ -86,8 +94,9 @@ Regresión logística daño ~ distancia a la falla + gradiente de deformación (
 | Fig. 8 | Daño a escala de edificio: Umbra X + óptico (antes/después) | `danio_sitios` + `vantor` | 🟡 |
 | Fig. 9 | Daño vs gradiente y distancia a la falla | nuevo | ⬜ |
 | Fig. 10 | Infraestructura | nuevo | ⬜ |
-| Tabla 1 | Datos por banda (fechas, geometría, resolución, licencia) | `inv_tabla` | 🟡 formato |
-| Tabla 2 | Procesamiento y correcciones por producto | `auditoria` + `insar_metricas` | 🟡 |
+| Tabla 1 | Datos por banda y producto (fechas, dirección, línea base, días tras el sismo, fuente) | `tablas` | 🟡 código listo (27-nov) |
+| Tabla 2 | Procesamiento y correcciones por producto | `tablas` (de `auditoria` + `insar_metricas`) | 🟡 código listo |
+| Tablas S1–S3 | Calidad (tierra vs mar), mosaicos, comparaciones C vs L y propio vs UCSD | `tablas` | 🟡 código listo |
 | Tabla 3 | Detección de daño por banda (P/R/F1/MCC/AUC) | nuevo | ⬜ |
 | Suplemento | QC por producto y por mosaico, paneles individuales, costuras y procedencia, propio vs UCSD | `qc`, `insar_metricas`, `mosaico` | ✅ código |
 

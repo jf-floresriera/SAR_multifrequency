@@ -101,10 +101,15 @@ def descomponer(pares, nombre_banda, salida):
           [f"{100 * valido[..., k].mean():.1f}%" for k in range(n)])
     E = np.full(d.shape[:2], np.nan, "float32"); U = E.copy(); NOBS = np.zeros(d.shape[:2], "uint8")
     import itertools
-    # Cada píxel se resuelve con las pasadas que tenga (mínimo 2, con geometrías distintas: cond(G) < 15)
-    # Each pixel is solved with the tracks it has (min 2, distinct geometry: cond(G) < 15)
+    # Cada píxel se resuelve con las pasadas que tenga, PERO solo si entre ellas hay al menos una ascendente y una descendente
+    # (componente Este del vector de mirada de signo opuesto). Dos ascendentes (p. ej. NISAR 162A + 061A) casi no separan Este de
+    # Vertical: daban valores de ±1–2 m sin sentido físico. / Solve only with at least one ascending AND one descending geometry.
+    signoE = [np.sign(np.nanmean(G[..., k, 0])) for k in range(n)]
+    print(f"  {nombre_banda}: signo de la componente Este de cada pasada / East-component sign per track:", signoE)
     for k in range(n, 1, -1):
         for comb in itertools.combinations(range(n), k):
+            if not ({signoE[c] for c in comb} >= {1.0, -1.0}):
+                continue                                  # sin ASC + DESC no hay descomposición fiable
             m = np.all(valido[..., list(comb)], -1) & (NOBS == 0)
             if not m.any():
                 continue
@@ -147,6 +152,50 @@ E_L, U_L, tr = descomponer(pref_n, "NISAR_L", f"{RAIZ}/02_procesados/descomposic
 pref_c = sorted({p.rsplit("_los_m.tif", 1)[0] for p in glob.glob(f"{RAIZ}/02_procesados/sentinel1/*_los_m.tif")})
 print("Sentinel-1:", [os.path.basename(p) for p in pref_c])
 E_C, U_C, _ = descomponer(pref_c, "S1_C", f"{RAIZ}/02_procesados/descomposicion")
+
+# --- Comparación C vs L en la zona COMÚN y solo sobre TIERRA / C vs L on COMMON pixels, LAND only
+# Las LOS de sensores distintos no se comparan directamente (miran en direcciones distintas): se comparan Este y Vertical.
+def _tierra_utm():
+    try:
+        import geopandas as gpd
+        from rasterio.features import rasterize
+        g = None
+        for capa in ("venezuela_estados", "paises_sudamerica_ne50"):
+            try:
+                g = gpd.read_file(f"{RAIZ}/01_datos_crudos/mapas_base/mapas_base.gpkg", layer=capa).to_crs(GRILLA_EPSG); break
+            except Exception:
+                continue
+        if g is None:
+            return None
+        return rasterize([(x, 1) for x in g.geometry if x is not None], out_shape=E_C.shape, transform=tr).astype(bool)
+    except Exception as e:
+        print("[!] sin máscara de tierra:", e); return None
+
+
+TIERRA = _tierra_utm()
+filas_cl = []
+for comp, L_, C_ in (("Este", E_L, E_C), ("Vertical", U_L, U_C)):
+    base_m = TIERRA if TIERRA is not None else np.ones_like(E_C, bool)
+    m = np.isfinite(L_) & np.isfinite(C_) & base_m
+    fila = dict(componente=comp, pix_tierra=int(base_m.sum()), cobertura_C_tierra_pct=round(100 * float((np.isfinite(C_) & base_m).sum() / max(base_m.sum(), 1)), 1),
+                cobertura_L_tierra_pct=round(100 * float((np.isfinite(L_) & base_m).sum() / max(base_m.sum(), 1)), 1),
+                comun_tierra_pct=round(100 * float(m.sum() / max(base_m.sum(), 1)), 1), n_comun=int(m.sum()))
+    if m.sum() > 100:
+        x, y = C_[m] * 1000, L_[m] * 1000                                     # mm
+        dlc = y - x
+        fila.update(sesgo_L_menos_C_mm=round(float(np.mean(dlc)), 1), rmse_mm=round(float(np.sqrt(np.mean(dlc ** 2))), 1),
+                    mad_mm=round(float(1.4826 * np.median(np.abs(dlc - np.median(dlc)))), 1),
+                    r2=round(float(np.corrcoef(x, y)[0, 1] ** 2), 3), pendiente=round(float(np.polyfit(x, y, 1)[0]), 3))
+    filas_cl.append(fila)
+import pandas as _pd
+CL = _pd.DataFrame(filas_cl)
+_sal = f"{RAIZ}/02_procesados/descomposicion"
+CL.to_csv(f"{_sal}/comparacion_C_vs_L_es.csv", index=False)
+CL.rename(columns={"componente": "component", "pix_tierra": "land_pixels", "cobertura_C_tierra_pct": "C_land_coverage_pct",
+                   "cobertura_L_tierra_pct": "L_land_coverage_pct", "comun_tierra_pct": "common_land_pct", "n_comun": "n_common",
+                   "sesgo_L_menos_C_mm": "bias_L_minus_C_mm", "pendiente": "slope"}).to_csv(f"{_sal}/comparacion_C_vs_L_en.csv", index=False)
+print("\n=== C vs L (Este/Vertical) en píxeles COMUNES sobre TIERRA / on COMMON LAND pixels ===")
+print(CL.to_string(index=False))
 
 # --- Validación con GNSS CCS1 (dE = -0.464 m, dN = -0.011 m, dU = +0.021 m; Arenas & Suárez 2026)
 # Coloque las coordenadas exactas de CCS1 (de la ficha de estación NGL o IGVSB):

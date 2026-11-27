@@ -395,8 +395,7 @@ class Explorador:
                     except Exception as e:
                         ax.text(0.5, 0.5, f"no se pudo leer\n{str(e)[:60]}", ha="center", transform=ax.transAxes)
                     lab = {d.value: d.label for d in (dpre, dpost, dum)}.get(url, "")
-                    ax.set_title(f"{tit}\n{lab}", fontsize=9)
-                    pdz = self.danio[self.danio.intersects(self.zonas[self.zonas.zona == dz.value].geometry.iloc[0].buffer(dl.value / 111320))]
+                    ax.set_title(f"{tit}\n{lab}" + (f"\n{nota_u}" if sar and nota_u else ""), fontsize=8.5)
                 fig.suptitle(f"{dz.value} · {centro['lat']:.5f}, {centro['lon']:.5f} · ventana {dl.value} m", x=0.01, ha="left")
                 plt.tight_layout()
                 self._fig = fig

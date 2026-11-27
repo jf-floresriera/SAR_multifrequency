@@ -194,7 +194,7 @@ class Explorador:
                          layout=w.Layout(width="420px"))
         dtam = w.IntSlider(value=16, min=10, max=30, step=2, description="Tamaño fig.", continuous_update=False)
         dalto = w.IntSlider(value=520, min=300, max=900, step=50, description="Alto mapa", continuous_update=False)
-        dpre, dpost, dum = w.Dropdown(description="ANTES"), w.Dropdown(description="DESPUÉS"), w.Dropdown(description="UMBRA (X)")
+        dpre, dpost, dum = [w.Dropdown(description=t, layout=w.Layout(width="620px")) for t in ("ANTES", "DESPUÉS", "UMBRA (X)")]
         bver, busar = w.Button(description="Ver / show", button_style="info"), w.Button(description="Usar esta / use", button_style="success")
         bborrar, blista = w.Button(description="Borrar última / undo", button_style="warning"), w.Button(description="Ver guardadas / list")
         tnota = w.Text(description="Nota", placeholder="p. ej. ventana amplia / zoom edificio")
@@ -286,9 +286,13 @@ class Explorador:
         # así que cada punto se desplaza ~ h·cot(incidencia) hacia el satélite (h = altura; a 48° y 50 m ≈ 45 m). Se corrige con un
         # desplazamiento constante en la ventana: manual (barras) o automático (correlación de bordes con el óptico DESPUÉS).
         # Umbra GEC is ellipsoid-projected (no terrain correction): points shift ~h·cot(incidence) toward the sensor.
-        dE = w.IntSlider(value=0, min=-300, max=300, step=5, description="Umbra ΔE (m)", continuous_update=False)
-        dN = w.IntSlider(value=0, min=-300, max=300, step=5, description="Umbra ΔN (m)", continuous_update=False)
-        bauto = w.Button(description="Alinear auto / auto-align", button_style="")
+        dE = w.IntSlider(value=0, min=-300, max=300, step=5, description="Este ΔE (m)", continuous_update=False,
+                         style={"description_width": "initial"}, layout=w.Layout(width="360px"))
+        dN = w.IntSlider(value=0, min=-300, max=300, step=5, description="Norte ΔN (m)", continuous_update=False,
+                         style={"description_width": "initial"}, layout=w.Layout(width="360px"))
+        bauto = w.Button(description="Alinear auto / auto-align", button_style="primary", layout=w.Layout(width="200px"))
+        bcero = w.Button(description="Desfase 0", layout=w.Layout(width="100px"))
+        bcero.on_click(lambda _: (setattr(dE, "value", 0), setattr(dN, "value", 0)))
 
         def _desplazado():
             # ΔE/ΔN = cuánto aparece DESPLAZADA la imagen Umbra (+ = hacia el este/norte); se lee Umbra en centro + Δ para alinearla
@@ -383,7 +387,7 @@ class Explorador:
 
         dz.observe(opciones, names="value"); bver.on_click(ver); busar.on_click(usar); bborrar.on_click(borrar); blista.on_click(listar)
         opciones()
-        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, w.HBox([dE, dN, bauto]), tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
+        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, w.VBox([w.HTML('<b>⚙️ Alinear Umbra (X) con el óptico</b> — Umbra GEC no está corregido por relieve: muévalo hasta que calles y edificios coincidan'), w.HBox([dE, dN]), w.HBox([bauto, bcero])], layout=w.Layout(border='1px solid #0072B2', padding='4px', margin='4px 0')), tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
         if mapa_w is not None:
             caja.insert(1, mapa_w)
         display(w.VBox(caja))

@@ -282,6 +282,40 @@ class Explorador:
             dpre.options, dpost.options, dum.options = pre, post, um
             msg.value = f"<b>{r.zona}</b>: {r.n_danio} edificios dañados · {r.lat:.5f}, {r.lon:.5f} · {len(pre)} antes · {len(post)} después · {len(um)} Umbra"
 
+        # --- Desfase de Umbra respecto al óptico: los GEC de Umbra están proyectados sobre el ELIPSOIDE (sin corrección de terreno),
+        # así que cada punto se desplaza ~ h·cot(incidencia) hacia el satélite (h = altura; a 48° y 50 m ≈ 45 m). Se corrige con un
+        # desplazamiento constante en la ventana: manual (barras) o automático (correlación de bordes con el óptico DESPUÉS).
+        # Umbra GEC is ellipsoid-projected (no terrain correction): points shift ~h·cot(incidence) toward the sensor.
+        dE = w.IntSlider(value=0, min=-300, max=300, step=5, description="Umbra ΔE (m)", continuous_update=False)
+        dN = w.IntSlider(value=0, min=-300, max=300, step=5, description="Umbra ΔN (m)", continuous_update=False)
+        bauto = w.Button(description="Alinear auto / auto-align", button_style="")
+
+        def _desplazado():
+            # ΔE/ΔN = cuánto aparece DESPLAZADA la imagen Umbra (+ = hacia el este/norte); se lee Umbra en centro + Δ para alinearla
+            la = centro["lat"] + dN.value / 111320
+            lo = centro["lon"] + dE.value / (111320 * np.cos(np.radians(centro["lat"])))
+            return lo, la
+
+        def auto(_=None):
+            from skimage.registration import phase_cross_correlation
+            from scipy.ndimage import sobel, gaussian_filter
+            if not (dpost.value and dum.value):
+                msg.value = "Elija una escena DESPUÉS y una UMBRA"; return
+            msg.value = "Alineando… / aligning…"
+            n = 400
+            o = self._recorte(dpost.value, centro["lon"], centro["lat"], dl.value, n=n).mean(0)
+            u = self._recorte(dum.value, centro["lon"], centro["lat"], dl.value, bandas=(1,), n=n)[0]
+            u = np.where(u > 0, np.log10(u), np.nan); u = np.nan_to_num(u, nan=np.nanmedian(u))
+            def bordes(x):
+                x = gaussian_filter(x, 2); g = np.hypot(sobel(x, 0), sobel(x, 1)); return (g - g.mean()) / (g.std() + 1e-9)
+            (fy, fx), err, _ = phase_cross_correlation(bordes(o), bordes(u), upsample_factor=4)
+            px = dl.value / n
+            # desplazamiento a aplicar a Umbra: fila → norte (las filas crecen hacia el sur), columna → este
+            dE.value = int(np.clip(round(-fx * px / 5) * 5, -300, 300)); dN.value = int(np.clip(round(fy * px / 5) * 5, -300, 300))
+            msg.value = f"Desfase estimado / estimated offset: ΔE = {dE.value} m, ΔN = {dN.value} m (error {err:.2f}). Revise con «Ver»; ajuste a mano si hace falta."
+            ver()
+        bauto.on_click(auto)
+
         def ver(_=None):
             r = self.zonas[self.zonas.zona == dz.value].iloc[0]
             with out:
@@ -293,7 +327,8 @@ class Explorador:
                     if not url:
                         ax.set_title(tit + "\n(sin escena)"); continue
                     try:
-                        a = self._recorte(url, centro["lon"], centro["lat"], dl.value, bandas=(1,) if sar else (1, 2, 3))
+                        lo_, la_ = _desplazado() if sar else (centro["lon"], centro["lat"])
+                        a = self._recorte(url, lo_, la_, dl.value, bandas=(1,) if sar else (1, 2, 3))
                         ax.imshow(self._sar(a) if sar else self._rgb(a), cmap="gray" if sar else None)
                     except Exception as e:
                         ax.text(0.5, 0.5, f"no se pudo leer\n{str(e)[:60]}", ha="center", transform=ax.transAxes)
@@ -312,6 +347,7 @@ class Explorador:
             r = self.zonas[self.zonas.zona == dz.value].iloc[0]
             prev = pd.read_csv(self.salida) if os.path.exists(self.salida) else pd.DataFrame()
             fila = dict(zona=dz.value, lat=round(centro["lat"], 6), lon=round(centro["lon"], 6), ventana_m=dl.value, edificios_danados=r.n_danio,
+                        umbra_dE_m=dE.value, umbra_dN_m=dN.value,
                         antes=dpre.label, url_antes=dpre.value, despues=dpost.label, url_despues=dpost.value,
                         umbra=dum.label, url_umbra=dum.value, nota=tnota.value, fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
             if len(prev):
@@ -347,7 +383,7 @@ class Explorador:
 
         dz.observe(opciones, names="value"); bver.on_click(ver); busar.on_click(usar); bborrar.on_click(borrar); blista.on_click(listar)
         opciones()
-        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
+        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, w.HBox([dE, dN, bauto]), tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
         if mapa_w is not None:
             caja.insert(1, mapa_w)
         display(w.VBox(caja))

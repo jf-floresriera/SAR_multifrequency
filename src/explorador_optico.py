@@ -190,7 +190,10 @@ class Explorador:
         from shapely.geometry import Point
         zonas = list(self.zonas.zona)
         dz = w.Dropdown(options=zonas, description="Zona")
-        dl = w.IntSlider(value=600, min=200, max=2000, step=100, description="Ventana (m)", continuous_update=False)
+        dl = w.IntSlider(value=600, min=100, max=6000, step=50, description="Ventana (m)", continuous_update=False,
+                         layout=w.Layout(width="420px"))
+        dtam = w.IntSlider(value=16, min=10, max=30, step=2, description="Tamaño fig.", continuous_update=False)
+        dalto = w.IntSlider(value=520, min=300, max=900, step=50, description="Alto mapa", continuous_update=False)
         dpre, dpost, dum = w.Dropdown(description="ANTES"), w.Dropdown(description="DESPUÉS"), w.Dropdown(description="UMBRA (X)")
         bver, busar = w.Button(description="Ver / show", button_style="info"), w.Button(description="Usar esta / use", button_style="success")
         bborrar, blista = w.Button(description="Borrar última / undo", button_style="warning"), w.Button(description="Ver guardadas / list")
@@ -209,7 +212,8 @@ class Explorador:
         try:
             import ipyleaflet as L
             r0 = self.zonas.iloc[0]
-            mapa_w = L.Map(center=(r0.lat, r0.lon), zoom=15, scroll_wheel_zoom=True, layout=w.Layout(height="420px", width="100%"))
+            mapa_w = L.Map(center=(r0.lat, r0.lon), zoom=15, scroll_wheel_zoom=True, layout=w.Layout(height="520px", width="100%"))
+            mapa_w.add_control(L.FullScreenControl())               # botón de pantalla completa / full-screen button
             mapa_w.add_layer(L.TileLayer(url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
                                          name="satélite (solo para explorar)", attribution="Esri"))
             marcador = L.Marker(location=(r0.lat, r0.lon), draggable=True, title="Arrastre para mover la ventana / drag to move the window")
@@ -242,6 +246,8 @@ class Explorador:
         bn.on_click(lambda _: empujar(1, 0)); bs.on_click(lambda _: empujar(-1, 0))
         be.on_click(lambda _: empujar(0, 1)); bo.on_click(lambda _: empujar(0, -1))
         dl.observe(lambda _: _rect(), names="value")
+        if mapa_w is not None:
+            dalto.observe(lambda ch: setattr(mapa_w.layout, "height", f"{ch['new']}px"), names="value")
 
         def opciones(*_):
             r = self.zonas[self.zonas.zona == dz.value].iloc[0]; p = Point(r.lon, r.lat)
@@ -259,7 +265,7 @@ class Explorador:
             r = self.zonas[self.zonas.zona == dz.value].iloc[0]
             with out:
                 clear_output(wait=True)
-                fig, axs = plt.subplots(1, 3, figsize=(15, 5.2))
+                fig, axs = plt.subplots(1, 3, figsize=(dtam.value, dtam.value * 0.36))
                 for ax, (tit, url, sar) in zip(axs, (("ANTES / before", dpre.value, False), ("DESPUÉS / after", dpost.value, False),
                                                      ("UMBRA banda X / X-band", dum.value, True))):
                     ax.axis("off")
@@ -320,7 +326,7 @@ class Explorador:
 
         dz.observe(opciones, names="value"); bver.on_click(ver); busar.on_click(usar); bborrar.on_click(borrar); blista.on_click(listar)
         opciones()
-        caja = [w.HBox([dz, dl]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
+        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
         if mapa_w is not None:
             caja.insert(1, mapa_w)
         display(w.VBox(caja))

@@ -19,8 +19,8 @@ import numpy as np
 import rasterio
 from rasterio.transform import from_origin
 
-ENTRADA = "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR/01_datos_crudos/nisar_gunw"
-SALIDA = "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR/02_procesados/nisar"
+ENTRADA = globals().get("NISAR_ENTRADA", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR/01_datos_crudos/nisar_gunw")
+SALIDA = globals().get("NISAR_SALIDA", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR/02_procesados/nisar")   # pre-sísmicos → nisar_pre
 os.makedirs(SALIDA, exist_ok=True)
 C = 299_792_458.0
 

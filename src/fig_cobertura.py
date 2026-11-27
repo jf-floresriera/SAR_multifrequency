@@ -30,7 +30,7 @@ import geopandas as gpd
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.patches import Rectangle
-from shapely.geometry import shape
+from shapely.geometry import shape, box
 from shapely.ops import unary_union
 
 RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR")
@@ -45,6 +45,9 @@ TXT.update({
     "cv_vuelo": {"es": "vuelo", "en": "flight"}, "cv_mira": {"es": "mirada", "en": "look"},
     "cv_inc": {"es": "incidencia", "en": "incidence"},
     "cv_umbra": {"es": "Umbra (X) · spotlight", "en": "Umbra (X) · spotlight"},
+    "cv_alos_asf": {"es": "ALOS-2 (L) · escenas en ASF (antes del sismo)", "en": "ALOS-2 (L) · ASF scenes (pre-event)"},
+    "cv_planet": {"es": "Óptico (Planet SkySat), después", "en": "Optical (Planet SkySat), post-event"},
+    "cv_vantor": {"es": "Óptico (Vantor/WorldView), antes y después", "en": "Optical (Vantor/WorldView), pre- and post-event"},
 })
 # familia → (etiqueta, color, estilo)
 FAM = {"S1": ("Sentinel-1 (C)", OKABE_ITO[6], "-"), "NISAR": ("NISAR (L)", OKABE_ITO[3], "-"),
@@ -98,6 +101,41 @@ for fam, carpeta, patron in (("S1", "sentinel1", "S1_*_los_m.tif"), ("NISAR", "n
         etq = (tr_.group(1) if tr_ else direc) + (" F" + fr_.group(1) if fr_ else "")
         items.append(dict(fam=fam, nombre=nom, geom=g, direc=direc, etq=etq, geo=geo))
 print(f"{len(items)} huellas / footprints:", [i["etq"] for i in items])
+# ---- huellas adicionales (estilo tenue): ALOS-2 en ASF (escenas PRE), Planet SkySat (post) y Vantor (antes/después)
+EXTRA = {}
+try:
+    import asf_search as asf
+    r_ = asf.geo_search(dataset="ALOS-2", intersectsWith="POLYGON((-67.4 10.4,-66.6 10.4,-66.6 10.75,-67.4 10.75,-67.4 10.4))",
+                        start="2025-01-01", end="2026-08-31")
+    if len(r_):
+        EXTRA["alos2_asf"] = gpd.GeoDataFrame({"fecha": [x.properties.get("startTime") for x in r_]}, geometry=[shape(x.geometry) for x in r_], crs=4326)
+except Exception as e:
+    print("   (ALOS-2 ASF no disponible / unavailable):", str(e)[:80])
+try:
+    import io, requests
+    _u = "https://data.source.coop/planet/disasterdata/venezuela-earthquake-2026-06-24/post-event/items.parquet"
+    EXTRA["planet"] = gpd.read_parquet(io.BytesIO(requests.get(_u, timeout=120).content)).to_crs(4326)
+except Exception as e:
+    print("   (Planet no disponible / unavailable):", str(e)[:80])
+try:
+    import json, requests
+    _v = f"{TRAB}/vantor/vantor_huellas.geojson"
+    if not os.path.exists(_v):
+        base = "https://vantor-opendata.s3.amazonaws.com/events/Venezuela-Earthquake-Jun-2026/"
+        col = requests.get(base + "collection.json", timeout=60).json()
+        feats = []
+        for l in col["links"]:
+            if l["rel"] == "item":
+                j = requests.get(l["href"], timeout=60).json()
+                feats.append({"type": "Feature", "geometry": j["geometry"], "properties": {"id": j["id"], "fase": j["properties"].get("phase"),
+                                                                                          "fecha": j["properties"]["datetime"][:10]}})
+        os.makedirs(os.path.dirname(_v), exist_ok=True)
+        json.dump({"type": "FeatureCollection", "features": feats}, open(_v, "w"))
+    EXTRA["vantor"] = gpd.read_file(_v).to_crs(4326)
+except Exception as e:
+    print("   (Vantor no disponible / unavailable):", str(e)[:80])
+print("Huellas adicionales / extra footprints:", {k: len(v) for k, v in EXTRA.items()})
+
 if WIN is None:
     if items:
         b_ = unary_union([i["geom"] for i in items]).bounds
@@ -132,11 +170,17 @@ if np.isfinite(dem).any():
 
 CTX = {}
 g_ = f"{RAIZ}/01_datos_crudos/mapas_base/mapas_base.gpkg"
+_NE = "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_50m_admin_0_countries.geojson"
 for c in ("venezuela_estados", "fallas_activas_gem", "epicentros_usgs", "sitios_danio", "paises_sudamerica_ne50"):
     try:
         CTX[c] = gpd.read_file(g_, layer=c)
     except Exception:
         CTX[c] = None
+if CTX.get("paises_sudamerica_ne50") is None:          # respaldo: el localizador nunca queda vacío / fallback so the locator is never empty
+    try:
+        _p = gpd.read_file(_NE); CTX["paises_sudamerica_ne50"] = _p[_p.intersects(box(-95, -60, -50, 20))]
+    except Exception as e:
+        print("[!] sin países para el localizador / no countries for the locator:", e)
 
 
 def _flecha(ax, x, y, az, largo, **kw):
@@ -152,7 +196,7 @@ def _fig(idioma):
     fig = plt.figure(figsize=(180 / 25.4, H / 25.4))
     b = fig.add_axes([9 / 180, 62 / H, 168 / 180, h_map / H])
     c = fig.add_axes([4 / 180, 2 / H, 172 / 180, 36 / H])
-    a = b.inset_axes([0.005, 0.62, 0.21, 0.37])            # ubicación incrustada en la esquina / embedded locator
+    a = b.inset_axes([0.005, 0.52, 0.30, 0.47])            # ubicación incrustada (más grande) / larger embedded locator
 
     # (a) ubicación
     a.set_facecolor("#dfe9f2")
@@ -160,6 +204,10 @@ def _fig(idioma):
         CTX["paises_sudamerica_ne50"].plot(ax=a, facecolor="#efefec", edgecolor="#8a8a8a", lw=0.3)
         p = CTX["paises_sudamerica_ne50"]; p[p.ADMIN == "Venezuela"].plot(ax=a, facecolor="#f6dcc0", edgecolor="#8a3a00", lw=0.5)
     a.add_patch(Rectangle((WIN[0], WIN[2]), WIN[1] - WIN[0], WIN[3] - WIN[2], fill=False, ec="k", lw=0.8))
+    for nom, (x_, y_) in {"Venezuela": (-66, 7), "Colombia": (-73.5, 4), "Brasil" if idioma == "es" else "Brazil": (-61.5, 1),
+                          "Guyana": (-58.9, 5.2), ("Mar Caribe" if idioma == "es" else "Caribbean Sea"): (-71, 13.3)}.items():
+        a.text(x_, y_, nom, fontsize=5.5, ha="center", color="#8a3a00" if nom == "Venezuela" else "0.35",
+               fontweight="bold" if nom == "Venezuela" else "normal")
     a.set_xlim(-80, -56); a.set_ylim(-2, 15); a.set_aspect(1 / np.cos(np.radians(7)))
     a.set_xticks([]); a.set_yticks([]); a.set_xlabel(""); a.set_ylabel("")
     a.text(0.03, 0.97, "(a)", transform=a.transAxes, fontsize=8, fontweight="bold", va="top")
@@ -172,6 +220,12 @@ def _fig(idioma):
         CTX["venezuela_estados"].plot(ax=b, facecolor="#efefec", edgecolor="none", zorder=1)
     contexto_mapa(b, CTX, sitios=False)
     vistos = set()
+    if "alos2_asf" in EXTRA:
+        EXTRA["alos2_asf"].boundary.plot(ax=b, color=FAM["ALOS2"][1], lw=0.5, ls=":", alpha=0.8, zorder=4)
+    if "planet" in EXTRA:
+        EXTRA["planet"].plot(ax=b, facecolor="#CC79A7", edgecolor="#8e3f6f", lw=0.3, alpha=0.45, zorder=5)
+    if "vantor" in EXTRA:
+        EXTRA["vantor"].boundary.plot(ax=b, color="#4d4d4d", lw=0.4, alpha=0.7, zorder=5)
     for it in items:
         lab, col, ls = FAM[it["fam"]]
         geoms = getattr(it["geom"], "geoms", [it["geom"]])
@@ -192,6 +246,12 @@ def _fig(idioma):
     h += [Line2D([], [], color="0.3", lw=1.2, ls="-", label="ASC"), Line2D([], [], color="0.3", lw=1.2, ls=":", label="DESC")]
     if UMBRA is not None:
         h.append(plt.Rectangle((0, 0), 1, 1, fc="#56B4E9", ec="#0072B2", label=T("cv_umbra", idioma)))
+    if "alos2_asf" in EXTRA:
+        h.append(Line2D([], [], color=FAM["ALOS2"][1], lw=0.6, ls=":", label=T("cv_alos_asf", idioma)))
+    if "planet" in EXTRA:
+        h.append(plt.Rectangle((0, 0), 1, 1, fc="#CC79A7", ec="#8e3f6f", alpha=0.45, label=T("cv_planet", idioma)))
+    if "vantor" in EXTRA:
+        h.append(Line2D([], [], color="#4d4d4d", lw=0.6, label=T("cv_vantor", idioma)))
     h += [plt.Rectangle((0, 0), 1, 1, fc="none", ec="#F0E442", lw=1.6, label=T("cv_zona", idioma)),
           Line2D([], [], color="#B2182B", lw=0.8, ls="--", label=T("u_fallas", idioma) if "u_fallas" in TXT else "Faults (GEM)")]
     b.legend(handles=h, loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=4, fontsize=6.2, frameon=False)

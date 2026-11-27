@@ -11,7 +11,7 @@ from rasterio.transform import from_origin
 
 RAIZ = "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR"
 S1_IN = f"{RAIZ}/01_datos_crudos/sentinel1_hyp3"
-S1_OUT = f"{RAIZ}/02_procesados/sentinel1"
+S1_OUT = S1_OUT_CO = f"{RAIZ}/02_procesados/sentinel1"
 os.makedirs(S1_OUT, exist_ok=True)
 
 LAMBDA_S1 = 0.055465763          # m (5.405 GHz)
@@ -47,6 +47,9 @@ for carpeta in sorted(glob.glob(f"{S1_IN}/S1*_INT*")):
                 k, v = linea.split(":", 1)
                 meta[k.strip()] = v.strip()
     nombre = f"S1_{fechas[0]}_{fechas[-1]}_{base[-4:]}" if fechas else base
+    S1_OUT = S1_OUT_CO
+    if fechas and fechas[-1] < "20260624":                      # par PRE-sísmico (control) → carpeta aparte
+        S1_OUT = f"{RAIZ}/02_procesados/sentinel1_pre"; os.makedirs(S1_OUT, exist_ok=True)
     with rasterio.open(unw[0]) as s:
         fase = s.read(1).astype("float32"); perfil = s.profile
     fase[fase == 0] = np.nan

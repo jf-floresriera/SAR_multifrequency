@@ -26,6 +26,7 @@ PASOS = [
     ("auxiliares",  "C InSAR",      "auxiliares.py",                "Réplicas USGS y WorldCover",                         "USGS aftershocks and WorldCover"),
     ("nisar_tif",   "C InSAR",      "nisar_gunw_a_geotiff.py",      "NISAR GUNW → GeoTIFF (LOS, coherencia)",             "NISAR GUNW → GeoTIFF (LOS, coherence)"),
     ("s1_tif",      "C InSAR",      "s1_hyp3_a_geotiff.py",         "Sentinel-1 HyP3 → GeoTIFF (LOS, coherencia)",        "Sentinel-1 HyP3 → GeoTIFF (LOS, coherence)"),
+    ("presismico",  "C InSAR",      "presismico.py",                "Pares PRE-sísmicos (control): S-1 por HyP3 (confirmar) y NISAR GUNW", "Pre-seismic control pairs: S-1 via HyP3 (confirm) and NISAR GUNW"),
     ("descomp",     "C InSAR",      "descomposicion_C_L.py",        "Este/Vertical C y L, L − C, validación GNSS",        "East/Up C and L, L − C, GNSS validation"),
     ("ucsd_los",    "C InSAR",      "ucsd_los_a_geotiff.py",        "ALOS-2 y NISAR procesados por UCSD → GeoTIFF (7 tracks)",  "UCSD-processed ALOS-2 and NISAR → GeoTIFF (7 tracks)"),
     ("auditoria",   "C InSAR",      "auditar_correcciones.py",      "Auditoría: qué correcciones traen los productos",    "Audit: which corrections the products carry"),
@@ -42,7 +43,7 @@ PASOS = [
     ("exportar",    "E Salida",     "exportar_figuras_github.py",   "Preparar figuras para GitHub (sin Planet/Esri)",     "Prepare figures for GitHub (no Planet/Esri)"),
 ]
 IDS = [p[0] for p in PASOS]
-SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "mosaico", "comparacion", "insar_metricas", "tablas", "inventario", "cobertura"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
+SIEMPRE = {"hyp3_estado", "descargas", "exportar", "auditoria", "qc", "mosaico", "comparacion", "insar_metricas", "tablas", "inventario", "cobertura", "presismico"}     # idempotentes por diseño: se pueden correr siempre / idempotent: safe to always run
 
 # Hecho ANTES de este cuaderno (19-nov-2026), con la evidencia encontrada en Drive. Es evidencia de que el paso
 # se ejecutó, no una verificación del contenido de sus salidas. / Done BEFORE this notebook, with Drive evidence.
@@ -121,6 +122,8 @@ def paso(pid, correr, raiz, version="", forzar=False, confirmar=False, variables
     if hecho and not forzar and pid not in SIEMPRE:
         print(f"⏭️  {pid}: ya hecho / already done. Use forzar=True para repetir / to repeat.")
         return None
+    if pid == "presismico":                 # CONFIRMAR se fija en CADA llamada (no queda pegado de una corrida anterior)
+        variables = dict(variables or {}, CONFIRMAR=bool(confirmar))
     if pid == "hyp3_envio" and not confirmar:
         print("🛑 hyp3_envio gasta créditos de HyP3. Revise primero con inv_s1 y repita con confirmar=True.")
         print("🛑 hyp3_envio uses HyP3 credits. Check with inv_s1 first, then repeat with confirmar=True.")

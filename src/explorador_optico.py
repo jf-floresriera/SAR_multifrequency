@@ -371,11 +371,11 @@ class Explorador:
             def bordes(x):
                 x = gaussian_filter(x, 2); g = np.hypot(sobel(x, 0), sobel(x, 1)); return (g - g.mean()) / (g.std() + 1e-9)
             mo, mu = np.ones_like(o, bool), val
-            (fy, fx), err, _ = phase_cross_correlation(bordes(o), bordes(u), upsample_factor=4,
-                                                         reference_mask=mo, moving_mask=mu) if not val.all() else \
-                phase_cross_correlation(bordes(o), bordes(u), upsample_factor=4)
-            if np.ndim(err) == 0 and not np.isfinite(err):
-                err = np.nan
+            if val.all():
+                res = phase_cross_correlation(bordes(o), bordes(u), upsample_factor=4)
+            else:                                                     # con máscaras skimage devuelve solo el desplazamiento
+                res = phase_cross_correlation(bordes(o), bordes(u), reference_mask=mo, moving_mask=mu)
+            (fy, fx), err = (res[0], res[1]) if isinstance(res, tuple) else (res, np.nan)
             px = dl.value / n
             # desplazamiento a aplicar a Umbra: fila → norte (las filas crecen hacia el sur), columna → este
             dE.value = int(np.clip(round(-fx * px / 5) * 5, -300, 300)); dN.value = int(np.clip(round(fy * px / 5) * 5, -300, 300))

@@ -32,6 +32,7 @@ T0, T1 = pd.Timestamp("2026-05-25"), pd.Timestamp("2026-07-15")
 TXT.update({"i_sismo": {"es": "Mw 7,2 + 7,5 · 24 jun 2026", "en": "Mw 7.2 + 7.5 · 24 Jun 2026"},
             "i_esc": {"es": "escena", "en": "scene"}, "i_par": {"es": "par interferométrico usado", "en": "interferometric pair used"},
             "i_ext": {"es": "par externo (UCSD)", "en": "external pair (UCSD)"},
+            "i_inv": {"es": "par disponible (inventario, no usado)", "en": "available pair (inventory, not used)"},
             "i_pre": {"es": "ALOS-2 antes del 25 may (p. ej. T040A desde 14 ene 2025) →", "en": "ALOS-2 before 25 May (e.g. T040A from 14 Jan 2025) →"}})
 FILAS = [("X", "Umbra (X)"), ("C", "Sentinel-1 (C)"), ("L-NISAR", "NISAR (L)"), ("L-ALOS2", "ALOS-2 (L)"), ("OPT", "Planet + Vantor")]
 COL = {"X": OKABE_ITO[5], "C": OKABE_ITO[6], "L-NISAR": OKABE_ITO[3], "L-ALOS2": OKABE_ITO[1], "OPT": OKABE_ITO[7]}
@@ -69,6 +70,16 @@ for v in glob.glob(f"{TRAB}/vantor/vantor_escenas_*.csv"):
         escenas.append(dict(fila="OPT", fecha=f_))
 inv = leer(f"{TRAB}/inventario/inventario_multisensor.csv")      # inventario del 19-nov (Planet antes/después, etc.)
 if inv is not None and "sensor" in inv:
+    # todo el inventario del 19-nov: escenas S-1 (70), GUNW de NISAR (44: pre, co y post) y Planet (17 post + 41 pre)
+    _f = lambda c: pd.to_datetime(c, utc=True, errors="coerce").dt.tz_localize(None)
+    s1i = inv[inv.sensor.astype(str).str.startswith("Sentinel-1") & ~inv.sensor.astype(str).str.contains("par")]
+    for f_ in _f(s1i.fecha).dropna():
+        escenas.append(dict(fila="C", fecha=f_))
+    nl = inv[inv.sensor.astype(str).eq("NISAR-L")]
+    for r0, r1 in zip(_f(nl.fecha), _f(nl.fecha_sec)):
+        if pd.notna(r0) and pd.notna(r1):
+            pares.append(dict(fila="L-NISAR", ini=r0, fin=r1, externo=False, etiqueta="", inventario=True))
+    print(f"   inventario: S-1 {len(s1i)} escenas · NISAR {len(nl)} GUNW")
     pl = inv[inv.sensor.astype(str).str.startswith("Planet")]
     for f_ in pd.to_datetime(pl.fecha, utc=True, errors="coerce").dt.tz_localize(None).dropna():
         escenas.append(dict(fila="OPT", fecha=f_))
@@ -79,6 +90,8 @@ else:
 PA, ES = pd.DataFrame(pares), pd.DataFrame(escenas).drop_duplicates()
 if len(PA):
     PA = PA.drop_duplicates(["fila", "ini", "fin", "etiqueta"])      # frames del mismo track = un solo par
+    if "inventario" not in PA:
+        PA["inventario"] = False
 
 
 def _fig(idioma):
@@ -94,6 +107,11 @@ def _fig(idioma):
         if k == "L-ALOS2" and len(e) and (e.fecha < T0).any():
             ax.annotate(T("i_pre", idioma), (T0, y + 0.22), fontsize=5.2, color=COL[k], ha="left", va="bottom")
         p = PA[PA.fila == k] if len(PA) else PA
+        if "inventario" in p:
+            q = p[p.inventario.fillna(False).astype(bool)]
+            for r in q.itertuples():
+                ax.plot([max(r.ini, T0), min(r.fin, T1)], [y + 0.32, y + 0.32], color=COL[k], lw=0.6, alpha=0.35, solid_capstyle="butt", zorder=2)
+            p = p[~p.inventario.fillna(False).astype(bool)]
         for j, r in enumerate(p.sort_values("ini").itertuples()):
             yy = y - 0.28 + 0.14 * (j % 4)
             ini = max(r.ini, T0)
@@ -111,8 +129,9 @@ def _fig(idioma):
         ax.spines[s].set_visible(False)
     h = [plt.Line2D([], [], marker="o", ls="", ms=3.2, color="0.4", label=T("i_esc", idioma)),
          plt.Line2D([], [], lw=1.6, color="0.4", label=T("i_par", idioma)),
-         plt.Line2D([], [], lw=1.0, ls="--", color="0.4", label=T("i_ext", idioma))]
-    ax.legend(handles=h, loc="upper left", fontsize=5.6, frameon=False, ncol=3, bbox_to_anchor=(0, 1.1))
+         plt.Line2D([], [], lw=1.0, ls="--", color="0.4", label=T("i_ext", idioma)),
+         plt.Line2D([], [], lw=0.6, alpha=0.4, color="0.4", label=T("i_inv", idioma))]
+    ax.legend(handles=h, loc="upper left", fontsize=5.6, frameon=False, ncol=4, bbox_to_anchor=(0, 1.1))
     fig.subplots_adjust(left=0.15, right=0.97, top=0.88, bottom=0.12)
     return fig
 

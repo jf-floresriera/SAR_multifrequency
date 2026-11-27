@@ -37,7 +37,7 @@ RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/
 TRAB = globals().get("TRABAJO", os.path.join(os.path.dirname(RAIZ), "inventario_2026"))
 FIG = f"{RAIZ}/04_figuras/borradores"
 os.makedirs(FIG, exist_ok=True)
-WIN = globals().get("VENTANA_COBERTURA", (-68.9, -65.9, 9.8, 11.15))
+WIN = globals().get("VENTANA_COBERTURA", None)          # None = se ajusta a todas las huellas (+ margen)
 ZONA = (-67.32, -66.62, 10.46, 10.70)                       # costa de La Guaira (zona de estudio)
 TXT.update({
     "cv_rel": {"es": "Relieve (DEM GLO-30, sombreado)", "en": "Relief (GLO-30 DEM, hillshade)"},
@@ -93,11 +93,17 @@ for fam, carpeta, patron in (("S1", "sentinel1", "S1_*_los_m.tif"), ("NISAR", "n
             continue
         geo = geometria(pref)
         tr_ = re.search(r"_T(\d{3}[AD])", nom)
-        direc = ("ASC" if tr_.group(1).endswith("A") else "DESC") if tr_ else (("ASC" if geo and 180 < geo[1] < 360 else "DESC") if geo else "?")
+        direc = ("ASC" if tr_.group(1).endswith("A") else "DESC") if tr_ else (("ASC" if geo and geo[1] < 180 else "DESC") if geo else "?")   # S-1 (mira a la derecha): ASC mira al este
         fr_ = re.search(r"_F(\d{3})_", nom)
         etq = (tr_.group(1) if tr_ else direc) + (" F" + fr_.group(1) if fr_ else "")
         items.append(dict(fam=fam, nombre=nom, geom=g, direc=direc, etq=etq, geo=geo))
 print(f"{len(items)} huellas / footprints:", [i["etq"] for i in items])
+if WIN is None:
+    if items:
+        b_ = unary_union([i["geom"] for i in items]).bounds
+        WIN = (max(b_[0] - 0.15, -72.5), min(b_[2] + 0.15, -63.0), max(b_[1] - 0.15, 7.5), min(b_[3] + 0.15, 12.8))
+    else:
+        WIN = (-69.5, -65.5, 9.5, 11.5)
 UMBRA = None
 for r in (f"{TRAB}/umbra_inventario/umbra_huellas.geojson", "./umbra_inventario/umbra_huellas.geojson"):
     if os.path.exists(r):
@@ -140,10 +146,13 @@ def _flecha(ax, x, y, az, largo, **kw):
 
 def _fig(idioma):
     aplicar_estilo(7)
-    fig = plt.figure(figsize=(180 / 25.4, 120 / 25.4))
-    gs = fig.add_gridspec(2, 2, width_ratios=[0.27, 0.73], height_ratios=[1, 1], wspace=0.12, hspace=0.25)
-    fig.subplots_adjust(left=0.05, right=0.99, top=0.97, bottom=0.2)
-    a = fig.add_subplot(gs[0, 0]); c = fig.add_subplot(gs[1, 0]); b = fig.add_subplot(gs[:, 1])
+    asp = (WIN[1] - WIN[0]) * np.cos(np.radians((WIN[2] + WIN[3]) / 2)) / (WIN[3] - WIN[2])
+    h_map = 168.0 / asp                                     # mm: mapa a todo el ancho (figura de suplemento)
+    H = h_map + 72.0
+    fig = plt.figure(figsize=(180 / 25.4, H / 25.4))
+    b = fig.add_axes([9 / 180, 62 / H, 168 / 180, h_map / H])
+    c = fig.add_axes([4 / 180, 2 / H, 172 / 180, 36 / H])
+    a = b.inset_axes([0.005, 0.62, 0.21, 0.37])            # ubicación incrustada en la esquina / embedded locator
 
     # (a) ubicación
     a.set_facecolor("#dfe9f2")
@@ -151,8 +160,9 @@ def _fig(idioma):
         CTX["paises_sudamerica_ne50"].plot(ax=a, facecolor="#efefec", edgecolor="#8a8a8a", lw=0.3)
         p = CTX["paises_sudamerica_ne50"]; p[p.ADMIN == "Venezuela"].plot(ax=a, facecolor="#f6dcc0", edgecolor="#8a3a00", lw=0.5)
     a.add_patch(Rectangle((WIN[0], WIN[2]), WIN[1] - WIN[0], WIN[3] - WIN[2], fill=False, ec="k", lw=0.8))
-    a.set_xlim(-78, -58); a.set_ylim(0, 14); a.set_aspect(1 / np.cos(np.radians(7))); a.tick_params(labelsize=5.5, length=2)
-    a.set_xlabel(""); a.set_ylabel(""); etiqueta_panel(a, "a", dx=-0.16, dy=1.0)
+    a.set_xlim(-80, -56); a.set_ylim(-2, 15); a.set_aspect(1 / np.cos(np.radians(7)))
+    a.set_xticks([]); a.set_yticks([]); a.set_xlabel(""); a.set_ylabel("")
+    a.text(0.03, 0.97, "(a)", transform=a.transAxes, fontsize=8, fontweight="bold", va="top")
 
     # (b) huellas sobre relieve
     b.set_facecolor("#dfe9f2")
@@ -184,23 +194,26 @@ def _fig(idioma):
         h.append(plt.Rectangle((0, 0), 1, 1, fc="#56B4E9", ec="#0072B2", label=T("cv_umbra", idioma)))
     h += [plt.Rectangle((0, 0), 1, 1, fc="none", ec="#F0E442", lw=1.6, label=T("cv_zona", idioma)),
           Line2D([], [], color="#B2182B", lw=0.8, ls="--", label=T("u_fallas", idioma) if "u_fallas" in TXT else "Faults (GEM)")]
-    b.legend(handles=h, loc="upper center", bbox_to_anchor=(0.5, -0.16), ncol=3, fontsize=5.6, frameon=False)
-    etiqueta_panel(b, "b", dx=-0.07, dy=1.0)
+    b.legend(handles=h, loc="upper center", bbox_to_anchor=(0.5, -0.08), ncol=4, fontsize=6.2, frameon=False)
+    etiqueta_panel(b, "b", dx=-0.02, dy=1.01)
 
-    # (c) geometría por sensor y dirección
-    c.set_xlim(0, 4); c.set_ylim(0, 4); c.set_aspect("equal"); c.axis("off")
+    # (c) geometría por sensor y dirección: una «rosa» por familia y dirección
+    c.set_xlim(0, 12); c.set_ylim(0, 3.0); c.set_aspect("equal"); c.axis("off")
     grupos = {}
     for it in items:
         if it["geo"]:
             grupos.setdefault((it["fam"], it["direc"]), it["geo"])
     for k, ((fam, direc), (vuelo, mira, inc)) in enumerate(sorted(grupos.items())):
-        x0, y0 = 0.7 + (k % 2) * 2.0, 3.2 - (k // 2) * 1.35
+        x0, y0 = 1.0 + k * 2.0, 1.75
         col = FAM[fam][1]
-        _flecha(c, x0, y0 - 0.35, vuelo, 0.7, color=col, lw=1.2)
-        _flecha(c, x0, y0 - 0.35, mira, 0.45, color="0.25", lw=0.8, ls="--")
-        c.text(x0 + 0.45, y0 + 0.05, f"{FAM[fam][0].split(' ·')[0]}\n{direc} · {T('cv_inc', idioma)} {inc:.0f}°", fontsize=5.0, va="top")
-    c.text(0, -0.15, f"— {T('cv_vuelo', idioma)}   - - {T('cv_mira', idioma)}", fontsize=5.2, color="0.25")
-    etiqueta_panel(c, "c", dx=-0.02, dy=0.98)
+        c.add_patch(plt.Circle((x0, y0), 0.75, fc="none", ec="0.8", lw=0.5))
+        c.text(x0, y0 + 0.82, "N", fontsize=5, ha="center", color="0.5")
+        _flecha(c, x0, y0, vuelo, 0.7, color=col, lw=1.4)
+        _flecha(c, x0, y0, mira, 0.5, color="0.25", lw=0.8, ls="--")
+        texto = FAM[fam][0].split(" ·")[0] + "\n" + direc + " · " + T("cv_inc", idioma) + f" {inc:.0f}°"
+        c.text(x0, y0 - 0.9, texto, fontsize=5.6, va="top", ha="center")
+    c.text(11.9, 2.8, "— " + T("cv_vuelo", idioma) + "    - - " + T("cv_mira", idioma), fontsize=5.8, color="0.25", ha="right")
+    etiqueta_panel(c, "c", dx=0.0, dy=1.0)
     return fig
 
 

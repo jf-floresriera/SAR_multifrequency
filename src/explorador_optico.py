@@ -437,7 +437,7 @@ class Explorador:
         return self._umbra_orto(url, lo_, la_, lado, n=n, invertir=(al["variante"] == "dem_inv"))
 
     def lote(self, puntos, prefijo="S", lados=(500, 700, 1000), umbra_inc=((48, "left"), (27, "right")), min_umbra=None, alinear=True, contornos=False, verificar=False, preferir=None,
-             recortes=False, ancho=18):
+             recortes=False, ancho=18, px_m=0.35, dpi=300):
         """Para cada punto {lat, lon, nombre opcional}: SOLO si lo cubren al menos `min_umbra` escenas Umbra, alinea cada Umbra
         automáticamente (una vez, en 800 m alrededor del centro) y dibuja el sitio con CADA tamaño de ventana de `lados`
         (antes | después | todas las Umbra). Cada tamaño se guarda como composición; al final, una lámina ES/EN por tamaño.
@@ -474,6 +474,8 @@ class Explorador:
             for k, (lab_u, url_u) in enumerate(esc["umbras"], start=1):
                 al = dict(dE=0, dN=0, conf=np.nan, variante="dem", puntaje=np.nan)
                 clave_al = (pt.get("grupo", nombre), url_u)
+                if not pt.get("alineacion"):                             # desfase manual guardado para el sitio / saved manual offset
+                    pt = dict(pt, alineacion=self._alin_guardada(pt.get("grupo", nombre)) or {})
                 if pt.get("alineacion") and url_u in pt["alineacion"]:    # desfase fijado a mano / user-fixed offset
                     al = dict(dict(conf=np.nan, puntaje=np.nan, variante="dem"), **pt["alineacion"][url_u])
                 elif clave_al in cache_al:
@@ -491,6 +493,7 @@ class Explorador:
                          f"corrección «{al['variante']}», confianza {al['conf']:.1f}σ" + ("" if al["conf"] >= CONF_MIN else " (débil: desfase dejado en 0)")))
             for lado in lados:
                 lado = float(lado)
+                n_px = int(min(3000, round(lado / px_m)))              # alta resolución: ~0,35 m/píxel / high resolution
                 cx, cy = to_utm.transform(lon, lat)
                 dv_ = self.danio.to_crs(32619)
                 dv_ = dv_[dv_.intersects(_bx(cx - lado / 2, cy - lado / 2, cx + lado / 2, cy + lado / 2))]
@@ -498,14 +501,14 @@ class Explorador:
                 for tes, ten, (lab, url) in (("Antes", "Before", esc["antes"]), ("Después", "After", esc["despues"])):
                     c = dict(tit_es=tes, tit_en=ten, sar=False, img=None, nota="", error="", lab=lab)
                     try:
-                        c["img"] = self._rgb(self._recorte(url, lon, lat, lado, bandas=(1, 2, 3))) if url else None
+                        c["img"] = self._rgb(self._recorte(url, lon, lat, lado, bandas=(1, 2, 3), n=n_px)) if url else None
                     except Exception as e:
                         c["error"] = str(e)[:60]
                     capas.append(c)
                 for k, ((lab, url), al) in enumerate(zip(esc["umbras"], alin), start=1):
                     c = dict(tit_es=f"Banda X (Umbra {k})", tit_en=f"X-band (Umbra {k})", sar=True, img=None, nota="", error="", lab=lab)
                     try:
-                        a0, c["nota"] = self._leer_umbra(url, lon, lat, lado, al)
+                        a0, c["nota"] = self._leer_umbra(url, lon, lat, lado, al, n=n_px)
                         c["img"] = self._sar(a0[None]); c["nota"] += f" · ΔE {al['dE']} m, ΔN {al['dN']} m"
                     except Exception as e:
                         c["error"] = str(e)[:60]
@@ -535,8 +538,9 @@ class Explorador:
                 dvc = dv_ if contornos else dv_.iloc[:0]
                 for idi in ("es", "en"):
                     f_ = self._figura(capas, idi, cx, cy, lado, dvc, fila, ancho)
-                    f_.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{int(lado)}m_{idi}.png", dpi=150)
-                    f_.savefig(f"{d}/vista_{fila['config']}_{idi}.png", dpi=150)
+                    f_.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{int(lado)}m_{idi}.png", dpi=dpi)
+                    for ext_ in ("png", "pdf"):
+                        f_.savefig(f"{d}/vista_{fila['config']}_{idi}.{ext_}", dpi=dpi)
                     if idi == "es":
                         display(f_)
                     plt.close(f_)

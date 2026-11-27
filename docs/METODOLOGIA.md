@@ -81,6 +81,8 @@ Ninguna escena cubre toda la zona (p. ej. NISAR 061A solo el este; 162A el oeste
 4. **Mosaicos** (misma familia y dirección, desfase igualado en el solape, procedencia por pieza) **solo para mostrar** el patrón completo; las métricas se calculan en los productos individuales.
 5. Literatura: la unión por solape y la corrección de desfases entre tracks son práctica común (ver HANDOFF §0.38 y las fuentes citadas allí); no encontramos un protocolo publicado específico para comparar sensores con cobertura parcial, por eso la regla se declara explícitamente en el artículo.
 
+> 🇪🇸 **La lista vigente y detallada está en [`LISTA_FIGURAS.md`](LISTA_FIGURAS.md)** (reemplaza la tabla de abajo). 🇬🇧 Current list: `LISTA_FIGURAS.md`.
+
 ## 5. Figuras y tablas (texto principal ≤ 10; suplemento sin límite)
 | Fig./Tabla | Contenido | Paso | Estado |
 |---|---|---|---|

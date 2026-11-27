@@ -156,20 +156,8 @@ E_C, U_C, _ = descomponer(pref_c, "S1_C", f"{RAIZ}/02_procesados/descomposicion"
 # --- Comparación C vs L en la zona COMÚN y solo sobre TIERRA / C vs L on COMMON pixels, LAND only
 # Las LOS de sensores distintos no se comparan directamente (miran en direcciones distintas): se comparan Este y Vertical.
 def _tierra_utm():
-    try:
-        import geopandas as gpd
-        from rasterio.features import rasterize
-        g = None
-        for capa in ("venezuela_estados", "paises_sudamerica_ne50"):
-            try:
-                g = gpd.read_file(f"{RAIZ}/01_datos_crudos/mapas_base/mapas_base.gpkg", layer=capa).to_crs(GRILLA_EPSG); break
-            except Exception:
-                continue
-        if g is None:
-            return None
-        return rasterize([(x, 1) for x in g.geometry if x is not None], out_shape=E_C.shape, transform=tr).astype(bool)
-    except Exception as e:
-        print("[!] sin máscara de tierra:", e); return None
+    from mascaras import mascara_tierra
+    return mascara_tierra(RAIZ, tr, E_C.shape, crs=f"EPSG:{GRILLA_EPSG}")        # sin mar ni lagos
 
 
 TIERRA = _tierra_utm()
@@ -254,6 +242,8 @@ def _fig(idioma):
     cm = CMAPS["divergente"] if "CMAPS" in globals() and "divergente" in CMAPS else "RdBu_r"
     for k, (ax, (clave, _)) in enumerate(zip(axs.flat, datos)):
         a = ll[clave] * 1000.0                                 # m → mm
+        from mascaras import solo_tierra
+        a = solo_tierra(a, RAIZ, _tr_ll)                        # sin mar ni lagos
         lim = np.nanpercentile(np.abs(a), 98) if np.isfinite(a).any() else 1.0
         lim = max(lim, 10.0)
         im = ax.imshow(a, extent=[LON0, LON1, LAT0, LAT1], cmap=cm, norm=TwoSlopeNorm(0, -lim, lim),

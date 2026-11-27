@@ -109,6 +109,11 @@ def _a_ll(ruta, win, metodo=Resampling.bilinear):
     with rasterio.open(ruta) as s:
         reproject(rasterio.band(s, 1), dst, src_transform=s.transform, src_crs=s.crs, src_nodata=s.nodata,
                   dst_transform=tr, dst_crs="EPSG:4326", dst_nodata=np.nan, resampling=metodo)
+    if "_los" in os.path.basename(ruta) and "_losE" not in ruta and "_losN" not in ruta and "_losU" not in ruta:
+        from mascaras import mascara_tierra
+        m_ = mascara_tierra(RAIZ, tr, dst.shape)                 # sin mar ni lagos / no sea, no lakes
+        if m_ is not None:
+            dst = np.where(m_, dst, np.nan)
     return dst
 
 

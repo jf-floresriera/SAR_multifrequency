@@ -3,6 +3,7 @@
 > 🇪🇸 Estado real del proyecto **verificado el 26-nov-2026** contra el Drive del autor y los cuadernos de Colab. Complementa `PROYECTO.md` (que describe el plan), [`CORRECCIONES_INSAR.md`](CORRECCIONES_INSAR.md) con lo que **de verdad existe**, lo que falta y lo que NO hay que repetir.
 > 🇬🇧 Real project state **verified on 2026-11-26** against the author's Drive and Colab notebooks. Complements `PROYECTO.md` (the plan) with what **actually exists**, what is missing and what must NOT be repeated.
 
+> 🖼️ **Lista de figuras y tablas (principal y suplemento) / figure list:** [`LISTA_FIGURAS.md`](LISTA_FIGURAS.md).
 > 🧭 **Metodología del artículo (P1 desplazamiento C vs L, P2 daño por banda, P3 integración) / paper methodology:** [`METODOLOGIA.md`](METODOLOGIA.md).
 > 📌 **Resumen corto para retomar mañana / short resume-tomorrow summary:** [`RESUMEN_PROCESO_2026-11-26.md`](RESUMEN_PROCESO_2026-11-26.md).
 

@@ -76,19 +76,10 @@ except Exception as e:
 
 # --- Máscara de TIERRA: hipótesis «la coherencia baja porque gran parte de la escena es mar (el agua no es coherente)».
 # --- Land mask: hypothesis "coverage is low because much of the scene is sea (water is incoherent)".
-LAND = None
-try:
-    from rasterio.features import rasterize as _ras
-    for _capa in ("paises_sudamerica_ne50", "venezuela_estados"):
-        try:
-            _g = gpd.read_file(f"{RAIZ}/01_datos_crudos/mapas_base/mapas_base.gpkg", layer=_capa)
-            LAND = _ras([(g, 1) for g in _g.geometry if g is not None], out_shape=(n_y, n_x), transform=TR, all_touched=False).astype(bool)
-            print(f"Máscara de tierra desde la capa «{_capa}»: {100 * LAND.mean():.0f} % de la ventana es tierra")
-            break
-        except Exception:
-            continue
-except Exception as e:
-    print("[!] sin máscara de tierra / no land mask:", e)
+from mascaras import mascara_tierra
+LAND = mascara_tierra(RAIZ, TR, (n_y, n_x))        # tierra firme: sin Mar Caribe ni lagos (Lago de Valencia, embalses)
+if LAND is not None:
+    print(f"Máscara de tierra (sin mar ni lagos): {100 * LAND.mean():.0f} % de la ventana / land without sea and lakes")
 
 prods = []
 for sensor, carpeta in (("Sentinel-1", "sentinel1"), ("NISAR", "nisar")):
@@ -125,6 +116,8 @@ for sensor, nombre, pref, ruta, iono in prods:
             tierra["coh_sobre_umbral_en_tierra_pct"] = round(100 * float((ok_coh & foot & LAND).sum() / (foot & LAND).sum()), 1)
         if (foot & ~LAND).sum() > 100:
             tierra["coh_sobre_umbral_en_mar_pct"] = round(100 * float((ok_coh & foot & ~LAND).sum() / (foot & ~LAND).sum()), 1)
+        # a partir de aquí todo (mapas, histogramas, franjas, ruido) se calcula SOLO sobre tierra / from here on, land only
+        los = np.where(LAND, los, np.nan); coh = np.where(LAND, coh, np.nan); v = np.isfinite(los)
     if v.sum() < 100:
         filas.append(dict(producto=nombre, sensor=sensor, cobertura_pct=round(100 * float(v.mean()), 2), diagnostico=
                           "CASI SIN DATOS tras la máscara de coherencia: bajar COH_MIN o revisar el producto"))

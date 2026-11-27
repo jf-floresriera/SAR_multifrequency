@@ -229,6 +229,8 @@ for idioma in ("es", "en"):
         break
     fig, axs = plt.subplots(n, 2, figsize=(180 / 25.4, (36 * n + 14) / 25.4), squeeze=False)
     for i, ((fam_, direc), (mos, fuente, nombres, base, info)) in enumerate(resumen.items()):
+        from mascaras import solo_tierra
+        mos = solo_tierra(mos, RAIZ, TR); fuente = np.where(np.isfinite(mos), fuente, -1)
         v = mos[np.isfinite(mos)]
         lim = max(float(np.percentile(np.abs(v), 99)) if v.size else 100.0, 20.0)
         ext = [WIN[0], WIN[1], WIN[2], WIN[3]]

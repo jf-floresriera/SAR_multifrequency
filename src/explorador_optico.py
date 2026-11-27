@@ -371,21 +371,24 @@ class Explorador:
             return t
         return t.replace("· left", "· mirada izquierda").replace("· right", "· mirada derecha")
 
-    def _escenas(self, lon, lat):
+    def _escenas(self, lon, lat, preferir=None):
         """Escenas por defecto en un punto: ANTES = Vantor pre con menos nubes (si no, mosaico Planet); DESPUÉS = Planet SkySat
         (si no, Vantor post con menos nubes); UMBRA = TODAS las que cubren el punto, primero mirada izquierda y mayor incidencia.
         Default scenes at a point; all Umbra scenes covering it."""
         from shapely.geometry import Point
         p = Point(lon, lat)
         vp = self.vantor[(self.vantor.fase == "pre") & self.vantor.contains(p)].sort_values(["nubes", "fecha"], ascending=[True, False])
-        pre = (f"Vantor {vp.iloc[0].fecha} (nubes {vp.iloc[0].nubes}%)", vp.iloc[0].url) if len(vp) else ("Planet mosaico Q1-2026 (4,8 m)", MOSAICO_PRE)
+        pre_op = [(f"Vantor {x.fecha} (nubes {x.nubes}%)", x.url) for x in vp.itertuples()] + [("Planet mosaico Q1-2026 (4,8 m)", MOSAICO_PRE)]
+        vq = self.vantor[(self.vantor.fase == "post") & self.vantor.contains(p)].sort_values("nubes")
         pl = self.planet[self.planet.contains(p)] if len(self.planet) else self.planet
-        if len(pl):
-            pl = pl.sort_values("datetime") if "datetime" in pl else pl
-            post = (f"Planet SkySat {str(pl.iloc[0].datetime)[:16]}", pl.iloc[0].url)
-        else:
-            vq = self.vantor[(self.vantor.fase == "post") & self.vantor.contains(p)].sort_values("nubes")
-            post = (f"Vantor {vq.iloc[0].fecha} (nubes {vq.iloc[0].nubes}%)", vq.iloc[0].url) if len(vq) else ("", None)
+        post_op = [(f"Vantor {x.fecha} (nubes {x.nubes}%)", x.url) for x in vq.itertuples()] + \
+                  [(f"Planet SkySat {str(x.datetime)[:16]}", x.url) for x in pl.itertuples()]
+        pref = dict(antes="Vantor 2026-03-21", despues="Vantor 2026-06-29")   # composición elegida por el autor / author's choice
+        pref.update(preferir or {})
+        def _elegir(op, clave):
+            m = [o for o in op if pref.get(clave) and pref[clave] in o[0]]
+            return m[0] if m else (op[0] if op else ("", None))
+        pre, post = _elegir(pre_op, "antes"), _elegir(post_op, "despues")
         um = self.umbra[self.umbra.contains(p)].copy()
         um["_der"] = um.direccion_mirada.astype(str).str.contains("right")
         um = um.sort_values(["_der", "incidencia_deg"], ascending=[True, False])
@@ -432,7 +435,7 @@ class Explorador:
             return self._recorte(url, lo_, la_, lado, bandas=(1,), n=n)[0], "sin corrección de relieve"
         return self._umbra_orto(url, lo_, la_, lado, n=n, invertir=(al["variante"] == "dem_inv"))
 
-    def lote(self, puntos, prefijo="S", lados=(500, 1000, 7000), umbra_inc=((48, "left"), (27, "right")), min_umbra=None, alinear=True, contornos=True, verificar=True,
+    def lote(self, puntos, prefijo="S", lados=(500, 1000, 7000), umbra_inc=((48, "left"), (27, "right")), min_umbra=None, alinear=True, contornos=False, verificar=True, preferir=None,
              recortes=False, ancho=18):
         """Para cada punto {lat, lon, nombre opcional}: SOLO si lo cubren al menos `min_umbra` escenas Umbra, alinea cada Umbra
         automáticamente (una vez, en 800 m alrededor del centro) y dibuja el sitio con CADA tamaño de ventana de `lados`
@@ -448,7 +451,7 @@ class Explorador:
         for i, pt in enumerate(puntos, start=1):
             lat, lon = float(pt["lat"]), float(pt["lon"])
             nombre = pt.get("nombre", f"{prefijo}{i}")
-            esc = self._escenas(lon, lat)
+            esc = self._escenas(lon, lat, preferir)
             if umbra_inc:                                         # SOLO las escenas pedidas (p. ej. 48° izq. y 27° der.)
                 import re as _re
                 elegidas = []
@@ -547,24 +550,63 @@ class Explorador:
         return t[[c for c in ("config", "zona", "lat", "lon", "ventana_m", "edificios_danados", "destruidos") if c in t]]
 
     def _figura(self, capas, idioma, cx, cy, lado, dv_, fila, ancho=16):
-        """Una fila de paneles pegados (antes | después | X 1 | X 2) en un idioma / one compact row in one language."""
+        """Una fila de paneles (antes | después | X 1 | X 2 | verificaciones) en un idioma, con coordenadas geográficas,
+        norte, escala y leyenda / one row of panels with geographic coordinates, north arrow, scale bar and legend."""
+        import textwrap
         import matplotlib.pyplot as plt
+        from matplotlib.patches import Patch
+        from matplotlib.lines import Line2D
         k = len(capas)
-        fig = plt.figure(figsize=(ancho, ancho / k + 1.0))
-        alto_tit = 0.95 / (ancho / k + 1.0)
+        izq, abajo_in, tit_in, sup_in = 0.55, 0.45, 0.85, 0.35          # márgenes en pulgadas / margins (in)
+        lado_in = (ancho - izq - 0.1) / k - 0.06
+        alto = lado_in + abajo_in + tit_in + sup_in
+        fig = plt.figure(figsize=(ancho, alto))
+        ancho_c = max(28, int(lado_in * 11))
         for i, c in enumerate(capas):
-            ax = fig.add_axes([i / k + 0.002, 0.005, 1 / k - 0.004, 1 - alto_tit - 0.01])
-            self._dibujar_panel(ax, c, idioma, cx, cy, lado, dv_, barra=(i == 0))
-            sub = self._traducir(c["lab"], idioma) + (f"\n{self._traducir(c['nota'], idioma)}" if c["nota"] else "")
-            ax.set_title(f"({chr(97 + i)}) {c['tit_es'] if idioma == 'es' else c['tit_en']}\n{sub}", fontsize=8, loc="left", pad=3)
-        if idioma == "es":
-            sup = f"{fila['zona']} · {fila['lat']:.5f}, {fila['lon']:.5f} · ventana {lado:.0f} m · {fila['edificios_danados']} edificios dañados (contornos rojos)"
-        else:
-            sup = f"{fila['zona']} · {fila['lat']:.5f}, {fila['lon']:.5f} · window {lado:.0f} m · {fila['edificios_danados']} damaged buildings (red outlines)"
-        fig.text(0.003, 0.995, sup, ha="left", va="top", fontsize=10)
+            ax = fig.add_axes([(izq + i * (lado_in + 0.06)) / ancho, abajo_in / alto, lado_in / ancho, lado_in / alto])
+            self._dibujar_panel(ax, c, idioma, cx, cy, lado, dv_, barra=(i == 0), lat_eje=(i == 0), lon_eje=True, norte=(i == 0))
+            tit = (c["tit_es"] if idioma == "es" else c["tit_en"]).replace(" (SAR magenta / óptico verde)", "").replace(" (SAR magenta / optical green)", "")
+            if "erific" in tit or "Check" in tit:
+                sub = "SAR magenta · óptico verde" if idioma == "es" else "SAR magenta · optical green"
+            else:
+                lab = self._traducir(c["lab"], idioma).replace("Umbra-10 · ", "")
+                sub = lab + (" · " + self._traducir(c["nota"], idioma).split(" (")[0] if c["nota"] else "")
+            ax.set_title(textwrap.fill(f"({chr(97 + i)}) {tit}", ancho_c) + "\n" + textwrap.fill(sub, ancho_c), fontsize=7.5, loc="left", pad=3)
+        es = idioma == "es"
+        sup = (f"{fila['zona']} · centro {fila['lat']:.5f}° N, {abs(fila['lon']):.5f}° W · ventana {lado:.0f} m × {lado:.0f} m"
+               if es else f"{fila['zona']} · centre {fila['lat']:.5f}° N, {abs(fila['lon']):.5f}° W · window {lado:.0f} m × {lado:.0f} m")
+        fig.text(izq / ancho, 1 - 0.08 / alto, sup, ha="left", va="top", fontsize=10)
+        ley = []
+        if any(c["sar"] for c in capas):
+            ley.append(Patch(fc="0.5", ec="0.3", label="Banda X (Umbra): brillo = retrodispersión" if es else "X-band (Umbra): brightness = backscatter"))
+        if any(("erific" in c["tit_es"]) for c in capas):
+            ley += [Patch(fc="#FF00FF", label="SAR (verificación)" if es else "SAR (check)"),
+                    Patch(fc="#00FF00", label="Óptico (verificación)" if es else "Optical (check)"),
+                    Patch(fc="#DDDDDD", ec="0.4", label="Coinciden (gris/blanco)" if es else "Match (grey/white)")]
+        if len(dv_):
+            ley.append(Line2D([], [], color="#FFD400", lw=1.2, label="Edificio con daño (referencia)" if es else "Damaged building (reference)"))
+        if ley:
+            fig.legend(handles=ley, loc="upper right", bbox_to_anchor=(1 - 0.05 / ancho, 1 - 0.02 / alto), ncol=len(ley),
+                       fontsize=7.5, frameon=False, handlelength=1.2, columnspacing=1.2)
         return fig
 
-    def _dibujar_panel(self, ax, c, idioma, cx, cy, lado, dv_, barra=False):
+    @staticmethod
+    def _marcas_geo(cx, cy, lado):
+        """Marcas redondas de longitud y latitud (en posiciones UTM) para una ventana / round lon-lat ticks in UTM positions."""
+        from pyproj import Transformer
+        a = Transformer.from_crs(32619, 4326, always_xy=True); b = Transformer.from_crs(4326, 32619, always_xy=True)
+        lo0, la0 = a.transform(cx - lado / 2, cy - lado / 2); lo1, la1 = a.transform(cx + lado / 2, cy + lado / 2)
+        lon_c, lat_c = a.transform(cx, cy)
+        paso = next(p_ for p_ in (0.001, 0.002, 0.0025, 0.005, 0.01, 0.02, 0.025, 0.05, 0.1) if (lo1 - lo0) / p_ <= 3.5)
+        dec = 3 if paso < 0.01 else 2
+        lons = np.arange(np.ceil(lo0 / paso) * paso, lo1, paso); lats = np.arange(np.ceil(la0 / paso) * paso, la1, paso)
+        xs = [b.transform(v, lat_c)[0] for v in lons]; ys = [b.transform(lon_c, v)[1] for v in lats]
+        dentro = lambda v, c0: abs(v - c0) <= 0.40 * lado             # sin marcas pegadas al borde / no ticks at the edges
+        X = [(x_, f"{abs(v):.{dec}f}°W") for x_, v in zip(xs, lons) if dentro(x_, cx)]
+        Y = [(y_, f"{v:.{dec}f}°N") for y_, v in zip(ys, lats) if dentro(y_, cy)]
+        return ([x_ for x_, _ in X], [l_ for _, l_ in X]), ([y_ for y_, _ in Y], [l_ for _, l_ in Y])
+
+    def _dibujar_panel(self, ax, c, idioma, cx, cy, lado, dv_, barra=False, lat_eje=False, lon_eje=False, norte=False):
         from matplotlib.patches import Rectangle
         ext = [cx - lado / 2, cx + lado / 2, cy - lado / 2, cy + lado / 2]
         ax.set_xticks([]); ax.set_yticks([])
@@ -573,17 +615,32 @@ class Explorador:
         if c["img"] is not None:
             ax.imshow(c["img"], cmap="gray" if c["sar"] else None, extent=ext, interpolation="nearest")
             if len(dv_):
-                dv_.boundary.plot(ax=ax, color="#FF2A00", linewidth=0.5)
+                ed = dv_[[not (g.geom_type == "Polygon" and len(g.exterior.coords) == 7) for g in dv_.geometry]]   # sin hexágonos
+                if len(ed):
+                    ed.boundary.plot(ax=ax, color="#FFD400", linewidth=0.5)
+            ax.set_xlabel(""); ax.set_ylabel("")
         else:
             ax.set_facecolor("#f2f2f2")
             ax.text(0.5, 0.5, "sin escena" if idioma == "es" else "no scene", ha="center", va="center", transform=ax.transAxes,
                     fontsize=8, color="#666666")
         ax.set_xlim(ext[0], ext[1]); ax.set_ylim(ext[2], ext[3])
+        if lat_eje or lon_eje:
+            (xs, xl), (ys, yl) = self._marcas_geo(cx, cy, lado)
+            if lon_eje:
+                ax.set_xticks(xs); ax.set_xticklabels(xl, fontsize=6.5)
+            if lat_eje:
+                ax.set_yticks(ys); ax.set_yticklabels(yl, fontsize=6.5, rotation=90, va="center")
+            ax.tick_params(length=2.5, width=0.5, pad=1.5)
+        if norte:                                                      # flecha de norte / north arrow
+            ax.annotate("", xy=(0.92, 0.95), xytext=(0.92, 0.80), xycoords="axes fraction",
+                        arrowprops=dict(arrowstyle="-|>,head_width=0.35,head_length=0.6", color="white", lw=1.6))
+            ax.text(0.92, 0.75, "N", transform=ax.transAxes, ha="center", va="top", fontsize=9, color="white", weight="bold",
+                    bbox=dict(fc="black", alpha=0.45, lw=0, pad=1))
         if barra:
-            b = 100 if lado <= 700 else (200 if lado <= 1500 else 500)
+            b = 100 if lado <= 700 else (200 if lado <= 1500 else (1000 if lado >= 4000 else 500))
             x0, y0 = ext[0] + 0.05 * lado, ext[2] + 0.05 * lado
             ax.add_patch(Rectangle((x0, y0), b, 0.012 * lado, color="white", ec="black", lw=0.5))
-            ax.text(x0 + b / 2, y0 + 0.025 * lado, f"{b} m", ha="center", fontsize=7, color="white",
+            ax.text(x0 + b / 2, y0 + 0.025 * lado, f"{b / 1000:g} km" if b >= 1000 else f"{b} m", ha="center", fontsize=7, color="white",
                     bbox=dict(fc="black", alpha=0.4, lw=0, pad=0.8))
 
     def lamina(self, sitios, nombre="lamina_destruccion", ancho=7.2):
@@ -601,7 +658,7 @@ class Explorador:
                 y0 = 1 - (0.2 + (r + 1) * (lado_p + 0.05) - 0.05) / alto
                 for j, c in enumerate(capas[:nc]):
                     ax = fig.add_axes([(0.35 + j * lado_p) / ancho, y0, lado_p / ancho * 0.985, lado_p / alto])
-                    self._dibujar_panel(ax, c, idi, cx, cy, float(fila["ventana_m"]), dv_, barra=(j == 0))
+                    self._dibujar_panel(ax, c, idi, cx, cy, float(fila["ventana_m"]), dv_, barra=(j == 0), norte=(j == 0))
                     fecha = (c["lab"].split("·")[0].replace("Umbra ", "").replace("Planet SkySat ", "").replace("Vantor ", "")
                              .split("(")[0].strip()[:10]) if c["lab"] else ""
                     if c["sar"] and c["lab"]:
@@ -612,7 +669,7 @@ class Explorador:
                     if r == 0 and j < len(cab):
                         ax.set_title(cab[j], fontsize=7.5, pad=2)
                 fig.text(0.30 / ancho, y0 + lado_p / alto / 2,
-                         f"{fila['zona']} · {fila['ventana_m']:.0f} m\n{fila['edificios_danados']} " + ("dañados" if idi == "es" else "damaged"),
+                         f"{fila['zona']} · {fila['ventana_m']:.0f} m\n{fila['lat']:.4f}°N {abs(fila['lon']):.4f}°W",
                          rotation=90, ha="right", va="center", fontsize=6.5)
             for ext_ in ("png", "pdf", "eps"):
                 fig.savefig(f"{self.raiz}/04_figuras/suplemento/{nombre}_{idi}.{ext_}", dpi=300 if ext_ == "png" else None)

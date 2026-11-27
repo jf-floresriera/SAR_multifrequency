@@ -42,6 +42,42 @@ def _reparar_main():
             sys.modules["__main__"] = types.ModuleType("__main__")
 
 
+def _nmi(a, b, bins=32):
+    """Información mutua normalizada (Studholme et al., 1999) entre dos imágenes de distinto sensor / normalized mutual information."""
+    v = np.isfinite(a) & np.isfinite(b)
+    if v.sum() < 500:
+        return np.nan
+    h, _, _ = np.histogram2d(a[v], b[v], bins=bins)
+    pxy = h / h.sum(); px_ = pxy.sum(1); py_ = pxy.sum(0)
+    hx = -np.sum(px_[px_ > 0] * np.log(px_[px_ > 0])); hy = -np.sum(py_[py_ > 0] * np.log(py_[py_ > 0]))
+    hxy = -np.sum(pxy[pxy > 0] * np.log(pxy[pxy > 0]))
+    return (hx + hy) / hxy
+
+
+def _registrar_nmi(opt, sar, mp, paso=3):
+    """Busca el desplazamiento (dy, dx en píxeles) de `sar` (tamaño n+2mp) que maximiza la NMI con `opt` (n×n),
+    usando intensidad y magnitud de bordes; búsqueda gruesa y luego fina. Devuelve (dy, dx, confianza).
+    Grid search maximizing NMI of intensities + edge magnitudes (coarse-to-fine)."""
+    from scipy.ndimage import gaussian_filter, sobel, median_filter
+    n = opt.shape[0]
+    o1 = gaussian_filter(opt, 1.0)
+    o2 = np.hypot(sobel(o1, 0), sobel(o1, 1))
+    s1 = median_filter(sar, 3)                                  # reduce el moteado / speckle
+    s2 = np.hypot(sobel(gaussian_filter(s1, 1.0), 0), sobel(gaussian_filter(s1, 1.0), 1))
+
+    def puntaje(dy, dx):
+        y0, x0 = mp + dy, mp + dx
+        return _nmi(o1, s1[y0:y0 + n, x0:x0 + n]) + _nmi(o2, s2[y0:y0 + n, x0:x0 + n])
+    gr = {(dy, dx): puntaje(dy, dx) for dy in range(-mp, mp + 1, paso) for dx in range(-mp, mp + 1, paso)}
+    (by, bx) = max(gr, key=lambda k: -np.inf if not np.isfinite(gr[k]) else gr[k])
+    fi = {(dy, dx): puntaje(dy, dx) for dy in range(max(-mp, by - paso), min(mp, by + paso) + 1)
+          for dx in range(max(-mp, bx - paso), min(mp, bx + paso) + 1)}
+    (by, bx) = max(fi, key=lambda k: -np.inf if not np.isfinite(fi[k]) else fi[k])
+    vals = np.array([v for v in gr.values() if np.isfinite(v)])
+    conf = (fi[(by, bx)] - np.median(vals)) / (np.std(vals) + 1e-9)   # cuántas desviaciones sobre lo típico
+    return by, bx, conf
+
+
 class Explorador:
     def __init__(self, raiz, trabajo, celda_m=500, n_max=15):
         _reparar_main()
@@ -346,6 +382,7 @@ class Explorador:
         bver, busar = w.Button(description="Ver / show", button_style="info"), w.Button(description="Usar esta / use", button_style="success")
         bborrar, blista = w.Button(description="Borrar última / undo", button_style="warning"), w.Button(description="Ver guardadas / list")
         tnota = w.Text(description="Nota", placeholder="p. ej. ventana amplia / zoom edificio")
+        dcont = w.Checkbox(value=True, description="Contornos de edificios dañados / damaged outlines", indent=False)
         grec = w.Checkbox(value=True, description="Guardar recortes con todas las bandas (GeoTIFF) / save multiband chips", indent=False)
         out, msg = w.Output(), w.HTML()
         centro = {"lat": None, "lon": None}                         # centro actual de la ventana (se mueve con el ratón)
@@ -470,26 +507,25 @@ class Explorador:
             return lo, la
 
         def _alinear(url_u):
-            """Desfase (ΔE, ΔN en m) de una escena Umbra respecto al óptico DESPUÉS, por correlación de bordes / offset of one Umbra scene."""
-            from skimage.registration import phase_cross_correlation
-            from scipy.ndimage import sobel, gaussian_filter
-            n = 400
-            o = self._recorte(dpost.value, centro["lon"], centro["lat"], dl.value, n=n).mean(0)
-            u, _ = _umbra(url_u, centro["lon"], centro["lat"], dl.value, n=n)
+            """Desfase (ΔE, ΔN en m) de una escena Umbra respecto al óptico DESPUÉS, maximizando la información mutua (NMI)
+            de intensidades y bordes en ±margen. Offset of one Umbra scene vs the post-event optical, by NMI grid search."""
+            lado = dl.value
+            n = 250
+            px = lado / n
+            mp = int(round(min(150.0, 0.4 * lado) / px))               # búsqueda hasta ±150 m / search radius
+            o = self._recorte(dpost.value, centro["lon"], centro["lat"], lado, n=n)[:3].mean(0)
+            o = np.where(o > 0, o, np.nan)
+            nb = n + 2 * mp
+            u, _ = _umbra(url_u, centro["lon"], centro["lat"], nb * px, n=nb)
             val = np.isfinite(u) & (u > 0)
-            if val.mean() < 0.3:
+            if val[mp:mp + n, mp:mp + n].mean() < 0.3:
                 return None, f"Umbra casi sin datos en esta ventana ({val.mean() * 100:.0f} % válido)"
-            u = np.where(val, np.log10(np.where(val, u, 1.0)), np.nan); u = np.where(np.isfinite(u), u, np.nanmedian(u))
-            o = np.where(np.isfinite(o), o, np.nanmedian(o))
-            def bordes(x):
-                x = gaussian_filter(x, 2); g = np.hypot(sobel(x, 0), sobel(x, 1)); return (g - g.mean()) / (g.std() + 1e-9)
-            if val.all():
-                res = phase_cross_correlation(bordes(o), bordes(u), upsample_factor=4)
-            else:                                                     # con máscaras skimage devuelve solo el desplazamiento
-                res = phase_cross_correlation(bordes(o), bordes(u), reference_mask=np.ones_like(o, bool), moving_mask=val)
-            fy, fx = (res[0] if isinstance(res, tuple) else res)
-            px = dl.value / n
-            return (int(np.clip(round(-fx * px / 5) * 5, -300, 300)), int(np.clip(round(fy * px / 5) * 5, -300, 300))), ""
+            u = np.where(val, 10 * np.log10(np.where(val, u, 1.0)), np.nan)
+            o = np.where(np.isfinite(o), o, np.nanmedian(o)); u = np.where(np.isfinite(u), u, np.nanmedian(u))
+            dy, dx, conf = _registrar_nmi(o, u, mp)
+            dE_, dN_ = int(round(dx * px / 5) * 5), int(round(-dy * px / 5) * 5)
+            aviso = "" if conf >= 3 else " (confianza baja: revise a mano)"
+            return (int(np.clip(dE_, -300, 300)), int(np.clip(dN_, -300, 300))), f"confianza {conf:.1f}σ{aviso}"
 
         def auto(_=None):
             if not (dpost.value and dum.value):
@@ -503,44 +539,104 @@ class Explorador:
                 if d_ is None:
                     textos.append(f"UMBRA {k}: ⚠️ {err_}"); continue
                 sE.value, sN.value = d_
-                textos.append(f"UMBRA {k}: ΔE = {d_[0]} m, ΔN = {d_[1]} m")
+                textos.append(f"UMBRA {k}: ΔE = {d_[0]} m, ΔN = {d_[1]} m · {err_}")
             msg.value = " · ".join(textos) + " — revise con «Ver»; ajuste a mano si hace falta."
             ver()
         bauto.on_click(auto)
 
+        def _traducir(t, idioma):
+            """Etiquetas de escena en español o inglés / scene labels in Spanish or English."""
+            if idioma == "en":
+                t = t.replace("nubes", "clouds").replace("relieve corregido", "terrain-corrected").replace("h máx", "max h")
+                t = t.replace("sin corrección de relieve", "no terrain correction").replace("Planet mosaico", "Planet mosaic")
+                for sen in ("Planet SkySat", "Vantor", "Planet mosaic"):
+                    if t.startswith(sen):
+                        t = f"Optical ({sen})" + t[len(sen):]
+                        break
+            else:
+                t = t.replace("· left", "· mirada izquierda").replace("· right", "· mirada derecha")
+            return t
+
+        def _dibujar(capas, idioma, cx, cy, dv_, n_v):
+            """Figura compacta (sin espacios entre paneles) en un idioma / compact figure in one language."""
+            from matplotlib.patches import Rectangle
+            L_ = dl.value
+            k = len(capas)
+            ancho = dtam.value
+            fig = plt.figure(figsize=(ancho, ancho / k + 1.0))
+            alto_tit = 0.95 / (ancho / k + 1.0)                          # ~0,95 pulgadas para títulos / title band
+            for i, c in enumerate(capas):
+                ax = fig.add_axes([i / k + 0.002, 0.005, 1 / k - 0.004, 1 - alto_tit - 0.01])
+                ax.set_xticks([]); ax.set_yticks([])
+                for sp in ax.spines.values():
+                    sp.set_linewidth(0.4)
+                ext = [cx - L_ / 2, cx + L_ / 2, cy - L_ / 2, cy + L_ / 2]
+                if c["img"] is not None:
+                    ax.imshow(c["img"], cmap="gray" if c["sar"] else None, extent=ext, interpolation="nearest")
+                    if dcont.value and len(dv_):
+                        dv_.boundary.plot(ax=ax, color="#FF2A00", linewidth=0.6)
+                else:
+                    ax.text(0.5, 0.5, ("sin escena" if idioma == "es" else "no scene") + (f"\n{c['error']}" if c["error"] else ""),
+                            ha="center", va="center", transform=ax.transAxes, fontsize=8)
+                ax.set_xlim(ext[0], ext[1]); ax.set_ylim(ext[2], ext[3])
+                letra = "abcd"[i]
+                tit = c["tit_es"] if idioma == "es" else c["tit_en"]
+                sub = _traducir(c["lab"], idioma) + (f"\n{_traducir(c['nota'], idioma)}" if c["nota"] else "")
+                ax.set_title(f"({letra}) {tit}\n{sub}", fontsize=8, loc="left", pad=3)
+                if i == 0:                                              # barra de escala / scale bar
+                    b = 100 if L_ <= 1500 else 500
+                    x0, y0 = ext[0] + 0.05 * L_, ext[2] + 0.05 * L_
+                    ax.add_patch(Rectangle((x0, y0), b, 0.012 * L_, color="white", ec="black", lw=0.5))
+                    ax.text(x0 + b / 2, y0 + 0.025 * L_, f"{b} m", ha="center", fontsize=7, color="white",
+                            bbox=dict(fc="black", alpha=0.4, lw=0, pad=0.8))
+            if idioma == "es":
+                sup = f"{dz.value} · {centro['lat']:.5f}, {centro['lon']:.5f} · ventana {L_} m · {n_v} edificios dañados en la ventana"
+            else:
+                sup = f"{dz.value} · {centro['lat']:.5f}, {centro['lon']:.5f} · window {L_} m · {n_v} damaged buildings in the window"
+            if dcont.value:
+                sup += " (contornos rojos)" if idioma == "es" else " (red outlines)"
+            fig.text(0.003, 0.995, sup, ha="left", va="top", fontsize=10)
+            return fig
+
         def ver(_=None):
-            r = self.zonas[self.zonas.zona == dz.value].iloc[0]
+            from pyproj import Transformer as _T
+            from shapely.geometry import box as _bx0
             with out:
                 clear_output(wait=True)
-                paneles = [("ANTES / before", dpre.value, 0), ("DESPUÉS / after", dpost.value, 0), ("UMBRA 1 · banda X / X-band", dum.value, 1)]
+                paneles = [("Antes", "Before", dpre.value, 0), ("Después", "After", dpost.value, 0),
+                           ("Banda X (Umbra 1)", "X-band (Umbra 1)", dum.value, 1)]
                 if dum2.value:
-                    paneles.append(("UMBRA 2 · banda X / X-band", dum2.value, 2))
-                fig, axs = plt.subplots(1, len(paneles), figsize=(dtam.value, dtam.value * (1.08 / len(paneles))))
-                for ax, (tit, url, k_u) in zip(axs, paneles):
+                    paneles.append(("Banda X (Umbra 2)", "X-band (Umbra 2)", dum2.value, 2))
+                cx, cy = _T.from_crs(4326, 32619, always_xy=True).transform(centro["lon"], centro["lat"])
+                dv_ = self.danio.to_crs(32619)
+                dv_ = dv_[dv_.intersects(_bx0(cx - dl.value / 2, cy - dl.value / 2, cx + dl.value / 2, cy + dl.value / 2))]
+                capas = []
+                for tes, ten, url, k_u in paneles:                       # se leen UNA vez y se dibujan en los dos idiomas
                     sar = k_u > 0
-                    ax.axis("off"); nota_u = ""
-                    if not url:
-                        ax.set_title(tit + "\n(sin escena)"); continue
-                    try:
-                        lo_, la_ = _desplazado(k_u) if sar else (centro["lon"], centro["lat"])
-                        if sar:
-                            a0, nota_u = _umbra(url, lo_, la_, dl.value)
-                            a = a0[None]
-                        else:
-                            a = self._recorte(url, lo_, la_, dl.value, bandas=(1, 2, 3))
-                        ax.imshow(self._sar(a) if sar else self._rgb(a), cmap="gray" if sar else None)
-                    except Exception as e:
-                        ax.text(0.5, 0.5, f"no se pudo leer\n{str(e)[:60]}", ha="center", transform=ax.transAxes)
-                    lab = {d.value: d.label for d in (dpre, dpost, dum, dum2) if d.value}.get(url, "")
-                    ax.set_title(f"{tit}\n{lab}" + (f"\n{nota_u}" if sar and nota_u else ""), fontsize=8.5)
-                from shapely.geometry import box as _bx
-                dlo = dl.value / 2 / (111320 * np.cos(np.radians(centro["lat"]))); dla = dl.value / 2 / 111320
-                n_v = int(self.danio.intersects(_bx(centro["lon"] - dlo, centro["lat"] - dla, centro["lon"] + dlo, centro["lat"] + dla)).sum())
-                fig.suptitle(f"{dz.value} · {centro['lat']:.5f}, {centro['lon']:.5f} · ventana {dl.value} m · {n_v} edificios dañados en la ventana", x=0.01, ha="left")
-                plt.tight_layout()
-                self._fig = fig
-                fig.savefig(f"{self.capturas}/vista_{dz.value}_{dl.value}m_{pd.Timestamp.now():%Y%m%d_%H%M%S}.png", dpi=110)
-                plt.show()
+                    c = dict(tit_es=tes, tit_en=ten, sar=sar, img=None, nota="", error="",
+                             lab={d.value: d.label for d in (dpre, dpost, dum, dum2) if d.value}.get(url, ""))
+                    if url:
+                        try:
+                            lo_, la_ = _desplazado(k_u) if sar else (centro["lon"], centro["lat"])
+                            if sar:
+                                a0, c["nota"] = _umbra(url, lo_, la_, dl.value)
+                                c["img"] = self._sar(a0[None])
+                                dEk, dNk = (dE, dN) if k_u == 1 else (dE2, dN2)
+                                c["nota"] += f" · ΔE {dEk.value} m, ΔN {dNk.value} m"
+                            else:
+                                c["img"] = self._rgb(self._recorte(url, lo_, la_, dl.value, bandas=(1, 2, 3)))
+                        except Exception as e:
+                            c["error"] = str(e)[:60]
+                    capas.append(c)
+                self._figs = {idi: _dibujar(capas, idi, cx, cy, dv_, len(dv_)) for idi in ("es", "en")}
+                self._fig = self._figs["es"]
+                sello = f"{dz.value}_{dl.value}m_{pd.Timestamp.now():%Y%m%d_%H%M%S}"
+                for idi, f_ in self._figs.items():
+                    f_.savefig(f"{self.capturas}/vista_{sello}_{idi}.png", dpi=110)
+                plt.close(self._figs["en"])                                # la versión en inglés se guarda, no se muestra
+                display(self._figs["es"])
+                plt.close(self._figs["es"])
+                print("Guardada en español e inglés / saved in Spanish and English: " + f"vista_{sello}_es.png · _en.png")
 
         def usar(_):
             # cada guardado es una CONFIGURACIÓN nueva: la misma zona puede guardarse varias veces (otra ventana u otras escenas)
@@ -573,9 +669,11 @@ class Explorador:
             dd = (self.zonas.lat - centro["lat"]) ** 2 + ((self.zonas.lon - centro["lon"]) * np.cos(np.radians(centro["lat"]))) ** 2
             fila["zona_del_centro"] = str(self.zonas.zona.iloc[int(np.argmin(dd.values))])
             fila["repetida_de"] = repetida
-            if self._fig is not None:
-                self._fig.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{dl.value}m.png", dpi=150)
-                fila["captura"] = f"ELEGIDA_{fila['config']}_{dl.value}m.png"
+            figs = getattr(self, "_figs", None) or ({"es": self._fig} if self._fig is not None else {})
+            for idi, f_ in figs.items():
+                f_.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{dl.value}m_{idi}.png", dpi=150)
+            if figs:
+                fila["captura"] = f"ELEGIDA_{fila['config']}_{dl.value}m_es.png | _en.png"
             todo = pd.concat([prev, pd.DataFrame([fila])], ignore_index=True)
             todo.to_csv(self.salida, index=False)
             n_z = int((todo.zona == dz.value).sum())
@@ -583,6 +681,10 @@ class Explorador:
                    f"({fila['destruidos']} destruidos) · {n_z} composiciones de {dz.value} · total {len(todo)}"
                    + (f" · (misma ventana y escenas que {repetida})" if repetida else ""))
             msg.value = txt
+            if figs:
+                os.makedirs(f"{self.recortes}/{fila['config']}", exist_ok=True)
+                for idi, f_ in figs.items():
+                    f_.savefig(f"{self.recortes}/{fila['config']}/vista_{fila['config']}_{idi}.png", dpi=150)
             if grec.value:
                 msg.value = txt + " · guardando recortes multibanda… / saving chips…"
                 try:
@@ -604,14 +706,17 @@ class Explorador:
                 clear_output(wait=True)
                 if os.path.exists(self.salida):
                     t = pd.read_csv(self.salida)
-                    cols = [c for c in ("config", "zona", "zona_del_centro", "ventana_m", "edificios_danados", "umbra_mirada", "umbra2_mirada", "nota") if c in t]
+                    t["recortes"] = [("✓" if os.path.exists(f"{self.recortes}/{c}/meta.json") else "—") for c in t.get("config", t.zona)]
+                    cols = [c for c in ("config", "zona", "lat", "lon", "ventana_m", "edificios_danados", "destruidos", "umbra_mirada",
+                                        "umbra_dE_m", "umbra_dN_m", "umbra2_mirada", "umbra2_dE_m", "umbra2_dN_m", "recortes", "nota") if c in t]
                     display(t[cols])
+                    print(f"Tabla completa / full table: {self.salida}\nRecortes por composición / chips: {self.recortes}/<config>/ (meta.json + .tif)")
                 else:
                     print("Aún no hay configuraciones guardadas / nothing saved yet")
 
         dz.observe(opciones, names="value"); bver.on_click(ver); busar.on_click(usar); bborrar.on_click(borrar); blista.on_click(listar)
         opciones()
-        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, dum2, w.VBox([w.HTML('<b>⚙️ Alinear Umbra (X) con el óptico</b> — Umbra GEC no está corregido por relieve: muévalo hasta que calles y edificios coincidan'), w.HBox([dE, dN]), w.HBox([dE2, dN2]), w.HBox([bauto, bcero, corr, inv_])], layout=w.Layout(border='1px solid #0072B2', padding='4px', margin='4px 0')), tnota, grec, w.HBox([bver, busar, bborrar, blista]), msg, out]
+        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, dum2, w.VBox([w.HTML('<b>⚙️ Alinear Umbra (X) con el óptico</b> — Umbra GEC no está corregido por relieve: muévalo hasta que calles y edificios coincidan'), w.HBox([dE, dN]), w.HBox([dE2, dN2]), w.HBox([bauto, bcero, corr, inv_])], layout=w.Layout(border='1px solid #0072B2', padding='4px', margin='4px 0')), tnota, w.HBox([dcont, grec]), w.HBox([bver, busar, bborrar, blista]), msg, out]
         if mapa_w is not None:
             caja.insert(1, mapa_w)
         display(w.VBox(caja))

@@ -435,7 +435,7 @@ class Explorador:
             return self._recorte(url, lo_, la_, lado, bandas=(1,), n=n)[0], "sin corrección de relieve"
         return self._umbra_orto(url, lo_, la_, lado, n=n, invertir=(al["variante"] == "dem_inv"))
 
-    def lote(self, puntos, prefijo="S", lados=(500, 1000, 7000), umbra_inc=((48, "left"), (27, "right")), min_umbra=None, alinear=True, contornos=False, verificar=True, preferir=None,
+    def lote(self, puntos, prefijo="S", lados=(500, 700, 1000), umbra_inc=((48, "left"), (27, "right")), min_umbra=None, alinear=True, contornos=False, verificar=False, preferir=None,
              recortes=False, ancho=18):
         """Para cada punto {lat, lon, nombre opcional}: SOLO si lo cubren al menos `min_umbra` escenas Umbra, alinea cada Umbra
         automáticamente (una vez, en 800 m alrededor del centro) y dibuja el sitio con CADA tamaño de ventana de `lados`
@@ -448,6 +448,8 @@ class Explorador:
         from shapely.geometry import box as _bx
         to_utm = Transformer.from_crs(4326, 32619, always_xy=True)
         filas, por_lado = [], {int(l): [] for l in lados}
+        cache_al = {}                                                   # (grupo, url) → alineación / alignment cache
+        por_grupo = {}
         for i, pt in enumerate(puntos, start=1):
             lat, lon = float(pt["lat"]), float(pt["lon"])
             nombre = pt.get("nombre", f"{prefijo}{i}")
@@ -470,11 +472,18 @@ class Explorador:
             alin = []
             for k, (lab_u, url_u) in enumerate(esc["umbras"], start=1):
                 al = dict(dE=0, dN=0, conf=np.nan, variante="dem", puntaje=np.nan)
-                if alinear and esc["despues"][1]:
+                clave_al = (pt.get("grupo", nombre), url_u)
+                if pt.get("alineacion") and url_u in pt["alineacion"]:    # desfase fijado a mano / user-fixed offset
+                    al = dict(dict(conf=np.nan, puntaje=np.nan, variante="dem"), **pt["alineacion"][url_u])
+                elif clave_al in cache_al:
+                    al = cache_al[clave_al]
+                elif alinear and esc["despues"][1]:
+                    c_lon, c_lat = pt.get("centro_grupo", (lon, lat))
                     try:
-                        al = self._alinear_umbra(esc["despues"][1], url_u, lon, lat)
+                        al = self._alinear_umbra(esc["despues"][1], url_u, c_lon, c_lat)
                     except Exception as e:
                         print(f"   alineación Umbra {k} falló: {str(e)[:80]}")
+                cache_al[clave_al] = al
                 alin.append(al)
                 print(f"   Umbra {k} ({lab_u.split('·')[-2].strip()}, {lab_u.split('·')[-1].strip()}): ΔE {al['dE']} m, ΔN {al['dN']} m, "
                       f"corrección «{al['variante']}», confianza {al['conf']:.1f}σ" + ("" if al["conf"] >= CONF_MIN else " (débil: desfase dejado en 0)"))
@@ -541,13 +550,40 @@ class Explorador:
                         print(f"   ⚠️ recortes no guardados: {str(e)[:100]}")
                 print(f"   → {fila['config']}: ventana {int(lado)} m, {fila['edificios_danados']} edificios dañados")
                 filas.append(fila); por_lado[int(lado)].append((fila, capas, cx, cy, dvc))
-        for lado, sitios in por_lado.items():
-            if sitios:
-                self.lamina(sitios, nombre=f"lamina_destruccion_{lado}m")
+                por_grupo.setdefault((pt.get("grupo"), int(lado)), []).append((fila, capas, cx, cy, dvc))
+        if any(g is not None for g, _ in por_grupo):                   # teselas: una lámina por sitio / one plate per site
+            for (g, lado), sitios in por_grupo.items():
+                self.lamina(sitios, nombre=f"lamina_{g}_{lado}m")
+        else:
+            for lado, sitios in por_lado.items():
+                if sitios:
+                    self.lamina(sitios, nombre=f"lamina_destruccion_{lado}m")
         if not filas:
             print("Ningún sitio tiene las escenas Umbra pedidas / no site has the required Umbra scenes"); return pd.DataFrame()
         t = pd.DataFrame(filas)
         return t[[c for c in ("config", "zona", "lat", "lon", "ventana_m", "edificios_danados", "destruidos") if c in t]]
+
+    def teselas(self, sitios, ventana=500, **kw):
+        """Cubre el área de cada sitio con ventanas de `ventana` m (cuadrícula centrada en la coordenada dada).
+        sitio = dict(nombre, lat, lon, area=lado total en m (p. ej. 1000 → 2×2 ventanas de 500 m)).
+        Todas las ventanas de un sitio usan el MISMO desfase de Umbra (se mide una vez, en el centro del sitio).
+        Tiles each site's area with `ventana`-m windows; one Umbra offset per site."""
+        from pyproj import Transformer
+        a = Transformer.from_crs(4326, 32619, always_xy=True); b = Transformer.from_crs(32619, 4326, always_xy=True)
+        puntos = []
+        for s_ in sitios:
+            area = float(s_.get("area", ventana))
+            m = max(1, int(np.ceil(area / ventana - 1e-6)))
+            x0, y0 = a.transform(s_["lon"], s_["lat"])
+            for i in range(m):                                         # filas de norte a sur / rows north→south
+                for j in range(m):                                     # columnas de oeste a este / columns west→east
+                    x = x0 + (j - (m - 1) / 2) * ventana; y = y0 - (i - (m - 1) / 2) * ventana
+                    lo, la = b.transform(x, y)
+                    puntos.append(dict(s_, nombre=f"{s_['nombre']}{'ABCDEFGH'[i]}{j + 1}" if m > 1 else s_["nombre"], lat=la, lon=lo,
+                                       grupo=s_["nombre"], centro_grupo=(s_["lon"], s_["lat"])))
+        print(f"{len(puntos)} ventanas de {ventana} m en {len(sitios)} sitios / windows")
+        kw.setdefault("lados", (ventana,))
+        return self.lote(puntos, **kw)
 
     def _figura(self, capas, idioma, cx, cy, lado, dv_, fila, ancho=16):
         """Una fila de paneles (antes | después | X 1 | X 2 | verificaciones) en un idioma, con coordenadas geográficas,
@@ -678,6 +714,86 @@ class Explorador:
                 display(fig)
             plt.close(fig)
         print(f"Lámina guardada / plate saved: {self.raiz}/04_figuras/suplemento/{nombre}_es|en.png|pdf|eps")
+
+    def campo_desfases(self, url_umbra, lon, lat, lado=1500, celda=250, url_optico=None, variante="sin", radio=100,
+                       nombre=None, guardar=True):
+        """CARACTERIZA cuánto y hacia dónde está corrida una Umbra respecto al óptico DESPUÉS, por celdas (tie points por NMI).
+        Devuelve una tabla (x, y, ΔE, ΔN, |Δ|, confianza, altura DEM) y dibuja un mapa de flechas ES/EN.
+        Si el desfase es casi igual en todas las celdas → basta un desplazamiento constante; si crece con la altura → relieve
+        (layover h·cot θ); si es desordenado/con baja confianza → no hay rasgos comunes (vegetación, mar).
+        Characterizes the Umbra-vs-optical offset per cell (NMI tie points): constant, height-dependent or unreliable."""
+        import matplotlib.pyplot as plt
+        from pyproj import Transformer
+        url_optico = url_optico or self._escenas(lon, lat)["despues"][1]
+        pxm = 2.5
+        n_c = int(round(celda / pxm)); mp = int(round(radio / pxm))
+        x0, y0 = Transformer.from_crs(4326, 32619, always_xy=True).transform(lon, lat)
+        inv = Transformer.from_crs(32619, 4326, always_xy=True)
+        filas = []
+        m = int(lado // celda)
+        for i in range(m):
+            for j in range(m):
+                cx = x0 - lado / 2 + (j + 0.5) * celda; cy = y0 + lado / 2 - (i + 0.5) * celda
+                lo_, la_ = inv.transform(cx, cy)
+                try:
+                    o = self._recorte(url_optico, lo_, la_, celda, n=n_c)[:3].mean(0)
+                    if (o > 0).mean() < 0.5:
+                        continue
+                    o = np.where(o > 0, o, np.median(o[o > 0]))
+                    nb = n_c + 2 * mp
+                    u = self._recorte(url_umbra, lo_, la_, nb * pxm, bandas=(1,), n=nb)[0] if variante == "sin" else \
+                        self._umbra_orto(url_umbra, lo_, la_, nb * pxm, n=nb, invertir=(variante == "dem_inv"))[0]
+                    val = u > 0
+                    if val.mean() < 0.5:
+                        continue
+                    u = np.where(val, 10 * np.log10(np.where(val, u, 1)), np.nan); u = np.where(np.isfinite(u), u, np.nanmedian(u))
+                    dy, dx, conf = _registrar_nmi(o, u, mp, paso=2)
+                    h = float(np.nanmean(self._dem(lo_, la_, celda, 10)))
+                    filas.append(dict(fila=i, col=j, x=cx, y=cy, lon=lo_, lat=la_, dE_m=dx * pxm, dN_m=-dy * pxm,
+                                      mag_m=float(np.hypot(dx, dy) * pxm), conf=conf, h_m=h))
+                except Exception as e:
+                    print(f"celda {i},{j}: {str(e)[:60]}")
+        t = pd.DataFrame(filas)
+        if not len(t):
+            print("Sin celdas válidas / no valid cells"); return t
+        ok = t[t.conf >= CONF_MIN]
+        print(f"{len(t)} celdas, {len(ok)} confiables (≥{CONF_MIN:.0f}σ). Mediana confiables: ΔE {ok.dE_m.median():+.0f} m, "
+              f"ΔN {ok.dN_m.median():+.0f} m; dispersión (MAD) {np.median(np.abs(ok.dE_m - ok.dE_m.median())):.0f} / "
+              f"{np.median(np.abs(ok.dN_m - ok.dN_m.median())):.0f} m" if len(ok) else "ninguna celda confiable")
+        if len(ok) >= 4:
+            r = np.corrcoef(ok.h_m, ok.mag_m)[0, 1]
+            print(f"Correlación |Δ| vs altura / |offset| vs height: r = {r:.2f} " + ("→ el relieve explica el corrimiento" if r > 0.5 else ""))
+        if guardar:
+            nombre = nombre or f"campo_desfases_{lat:.4f}_{lon:.4f}"
+            d = f"{self.capturas}/desfases"; os.makedirs(d, exist_ok=True)
+            t.to_csv(f"{d}/{nombre}.csv", index=False)
+            fondo = self._rgb(self._recorte(url_optico, lon, lat, lado, n=600))
+            for idi in ("es", "en"):
+                fig, ax = plt.subplots(figsize=(7, 7.4))
+                ext = [x0 - lado / 2, x0 + lado / 2, y0 - lado / 2, y0 + lado / 2]
+                ax.imshow(fondo, extent=ext, alpha=0.75)
+                esc = 3.0                                              # flechas exageradas ×3 para verlas / arrows exaggerated ×3
+                for _, r_ in t.iterrows():
+                    col = "#D55E00" if r_.conf >= CONF_MIN else "#999999"
+                    ax.annotate("", xy=(r_.x + esc * r_.dE_m, r_.y + esc * r_.dN_m), xytext=(r_.x, r_.y),
+                                arrowprops=dict(arrowstyle="-|>", color=col, lw=1.4))
+                    ax.text(r_.x, r_.y - celda * 0.3, f"{r_.mag_m:.0f} m", ha="center", fontsize=6.5,
+                            color="black", bbox=dict(fc="white", alpha=0.7, lw=0, pad=0.5))
+                ax.set_xlim(ext[:2]); ax.set_ylim(ext[2:])
+                (xs, xl), (ys, yl) = self._marcas_geo(x0, y0, lado)
+                ax.set_xticks(xs); ax.set_xticklabels(xl, fontsize=7); ax.set_yticks(ys); ax.set_yticklabels(yl, fontsize=7, rotation=90, va="center")
+                es = idi == "es"
+                ax.set_title(("Desfase de Umbra respecto al óptico (flechas ×3)\nnaranja = confiable · gris = baja confianza" if es else
+                              "Umbra offset relative to optical (arrows ×3)\norange = reliable · grey = low confidence"), fontsize=9, loc="left")
+                ax.annotate("", xy=(0.93, 0.97), xytext=(0.93, 0.86), xycoords="axes fraction", arrowprops=dict(arrowstyle="-|>", color="k", lw=1.5))
+                ax.text(0.93, 0.83, "N", transform=ax.transAxes, ha="center", va="top", fontsize=9, weight="bold")
+                fig.tight_layout(); fig.savefig(f"{d}/{nombre}_{idi}.png", dpi=200)
+                if es:
+                    from IPython.display import display
+                    display(fig)
+                plt.close(fig)
+            print(f"Guardado / saved: {d}/{nombre}_es|en.png y .csv")
+        return t
 
     def _rgb(self, a):
         a = np.moveaxis(a[:3], 0, -1)

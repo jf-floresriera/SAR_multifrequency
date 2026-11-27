@@ -22,7 +22,7 @@ from rasterio.warp import Resampling, reproject
 
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
 from comun import T, TXT
-from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar, sin_etiquetas
+from estilo_figuras import contexto_mapa, CMAPS, aplicar_estilo, etiqueta_panel, exportar, sin_etiquetas
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
 
@@ -33,7 +33,7 @@ DEG = 0.0008
 ESC = 1000.0
 FIG = f"{RAIZ}/04_figuras/borradores"
 os.makedirs(FIG, exist_ok=True)
-FAM = [("S1", "Sentinel-1 (C)"), ("NISAR", "NISAR (L)"), ("NISARUCSD", "NISAR (L) · UCSD"), ("ALOS2UCSD", "ALOS-2 (L) · UCSD")]
+FAM = [("S1", "Sentinel-1 (C)"), ("NISAR", "NISAR (L)"), ("ALOS2UCSD", "ALOS-2 (L) · UCSD")]   # NISAR de UCSD: solo validación (suplemento)
 TXT.update({"c_los": {"es": "LOS (mm); + = acercamiento al satélite", "en": "LOS (mm); + = toward satellite"},
             "c_sin": {"es": "sin dato", "en": "no data"},
             "c_fase": {"es": "Fase re-envuelta (rad); 1 ciclo = λ/2 (C: 27,7 mm · L: 119 mm)", "en": "Re-wrapped phase (rad); 1 cycle = λ/2 (C: 27.7 mm · L: 119 mm)"}})
@@ -168,14 +168,7 @@ def _fig(idioma, modo="los"):
             else:
                 ax.set_title(f"{nombres[fam]} · {d}", fontsize=6.2, loc="left", pad=2)
                 ax.text(0.5, 0.5, T("c_sin", idioma), transform=ax.transAxes, ha="center", va="center", fontsize=7, color="0.45")
-            if CTX.get("venezuela_estados") is not None:
-                CTX["venezuela_estados"].boundary.plot(ax=ax, color="#444444", lw=0.35, zorder=3)
-            if CTX.get("fallas_activas_gem") is not None:
-                CTX["fallas_activas_gem"].plot(ax=ax, color="#222222", lw=0.5, zorder=4)
-            if CTX.get("sitios_danio") is not None:
-                CTX["sitios_danio"].plot(ax=ax, color="#0072B2", markersize=5, edgecolor="white", linewidth=0.3, zorder=5)
-            if CTX.get("epicentros_usgs") is not None:
-                CTX["epicentros_usgs"].plot(ax=ax, color="#F0E442", marker="*", markersize=45, edgecolor="k", linewidth=0.5, zorder=6)
+            contexto_mapa(ax, CTX)
             sin_etiquetas(ax)
             ax.set_xlim(WIN[0], WIN[1]); ax.set_ylim(WIN[2], WIN[3]); ax.set_aspect(1 / np.cos(np.radians((WIN[2] + WIN[3]) / 2)))
             ax.tick_params(length=2.5, pad=1.5, labelsize=6)

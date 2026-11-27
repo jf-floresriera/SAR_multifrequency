@@ -88,6 +88,24 @@ def sin_etiquetas(ax):
     ax.set_xlabel(""); ax.set_ylabel("")
 
 
+ESTILO_FALLA = dict(color="#B2182B", lw=0.8, linestyle="--", zorder=4)     # fallas: rojo discontinuo (no confundir con la costa)
+ESTILO_LIMITE = dict(color="#7a7a7a", lw=0.35, zorder=3)                     # costa y límites estatales: gris fino continuo
+
+
+def contexto_mapa(ax, ctx, fallas=True, limites=True, epicentros=True, sitios=True):
+    """Dibuja el contexto con estilos DISTINTOS: costa/límites grises continuos, fallas rojas discontinuas con halo blanco.
+    Context with distinct styles: grey solid coast/boundaries, red dashed faults with a white halo."""
+    import matplotlib.patheffects as pe
+    if limites and ctx.get("venezuela_estados") is not None:
+        ctx["venezuela_estados"].boundary.plot(ax=ax, **ESTILO_LIMITE)
+    if fallas and ctx.get("fallas_activas_gem") is not None:
+        ctx["fallas_activas_gem"].plot(ax=ax, path_effects=[pe.Stroke(linewidth=1.8, foreground="white"), pe.Normal()], **ESTILO_FALLA)
+    if sitios and ctx.get("sitios_danio") is not None:
+        ctx["sitios_danio"].plot(ax=ax, color="#0072B2", markersize=6, edgecolor="white", linewidth=0.4, zorder=5)
+    if epicentros and ctx.get("epicentros_usgs") is not None:
+        ctx["epicentros_usgs"].plot(ax=ax, color="#F0E442", marker="*", markersize=55, edgecolor="k", linewidth=0.5, zorder=6)
+
+
 def estirar(arr, p=(2, 98)):
     """Límites por percentiles (ignora NaN). Devuelve (vmin, vmax) / percentile stretch limits."""
     a = np.asarray(arr, dtype=float)

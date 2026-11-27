@@ -201,7 +201,7 @@ from matplotlib.colors import TwoSlopeNorm
 from rasterio.warp import reproject as _rep, Resampling as _R
 from rasterio.transform import from_origin as _fo
 from pyproj import Transformer as _Tr
-from estilo_figuras import aplicar_estilo, etiqueta_panel, CMAPS, exportar, sin_etiquetas
+from estilo_figuras import contexto_mapa, aplicar_estilo, etiqueta_panel, CMAPS, exportar, sin_etiquetas
 
 # --- reproyectar a lon/lat para dibujar con coordenadas geográficas y capas de contexto / to lon-lat for context layers
 _t = _Tr.from_crs(GRILLA_EPSG, 4326, always_xy=True)
@@ -236,33 +236,39 @@ datos = [("E_C", E_C), ("U_C", U_C), ("E_L", E_L), ("U_L", U_L), ("E_LC", E_L - 
 ll = {k: _a_ll(v) for k, v in datos}
 
 
+def _lim_comun(*claves, p=96):
+    from mascaras import solo_tierra
+    v = np.concatenate([np.abs(solo_tierra(ll[c] * 1000.0, RAIZ, _tr_ll)).ravel() for c in claves])
+    v = v[np.isfinite(v)]
+    return max(float(np.percentile(v, p)) if v.size else 10.0, 10.0)
+
+
+LIMS = {}
+LIMS["E_C"] = LIMS["E_L"] = _lim_comun("E_C", "E_L")       # Este: C y L con la MISMA escala
+LIMS["U_C"] = LIMS["U_L"] = _lim_comun("U_C", "U_L")       # Vertical: idem
+LIMS["E_LC"] = _lim_comun("E_LC"); LIMS["U_LC"] = _lim_comun("U_LC")
+
+
 def _fig(idioma):
     aplicar_estilo(7)
     fig, axs = plt.subplots(3, 2, figsize=(180 / 25.4, 128 / 25.4))
+    fig.subplots_adjust(left=0.07, right=0.97, top=0.96, bottom=0.07, wspace=0.38, hspace=0.32)
     cm = CMAPS["divergente"] if "CMAPS" in globals() and "divergente" in CMAPS else "RdBu_r"
     for k, (ax, (clave, _)) in enumerate(zip(axs.flat, datos)):
         a = ll[clave] * 1000.0                                 # m → mm
         from mascaras import solo_tierra
         a = solo_tierra(a, RAIZ, _tr_ll)                        # sin mar ni lagos
-        lim = np.nanpercentile(np.abs(a), 98) if np.isfinite(a).any() else 1.0
-        lim = max(lim, 10.0)
+        lim = LIMS[clave]                                            # misma escala para C y L en cada componente
         im = ax.imshow(a, extent=[LON0, LON1, LAT0, LAT1], cmap=cm, norm=TwoSlopeNorm(0, -lim, lim),
                        interpolation="nearest", zorder=2)
         ax.set_facecolor("#e8f0f7")                            # mar / sea (los NaN dejan ver el fondo)
-        if CAP["venezuela_estados"] is not None:
-            CAP["venezuela_estados"].boundary.plot(ax=ax, color="#444444", lw=0.35, zorder=3)
-        if CAP["fallas_activas_gem"] is not None:
-            CAP["fallas_activas_gem"].plot(ax=ax, color="#222222", lw=0.6, zorder=4)
-        if CAP["epicentros_usgs"] is not None:
-            CAP["epicentros_usgs"].plot(ax=ax, color="#F0E442", marker="*", markersize=60, edgecolor="k", linewidth=0.5, zorder=6)
-        if CAP["sitios_danio"] is not None:
-            CAP["sitios_danio"].plot(ax=ax, color="#0072B2", markersize=7, edgecolor="white", linewidth=0.4, zorder=5)
+        contexto_mapa(ax, CAP)
         sin_etiquetas(ax)
         ax.set_xlim(LON0, LON1); ax.set_ylim(LAT0, LAT1)
         ax.set_aspect(1 / np.cos(np.radians((LAT0 + LAT1) / 2)))
         ax.tick_params(length=2.5, pad=1.5)
         ax.set_title(T(clave, idioma), fontsize=7, loc="left", pad=2)
-        etiqueta_panel(ax, "abcdef"[k], dx=-0.11, dy=1.0)
+        etiqueta_panel(ax, "abcdef"[k], dx=-0.10, dy=1.02)
         cb = fig.colorbar(im, ax=ax, pad=0.01, fraction=0.03, aspect=22)
         cb.ax.set_title("mm", fontsize=6.5, pad=2); cb.ax.tick_params(labelsize=6, length=2)
         if k >= 4:

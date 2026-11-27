@@ -12,8 +12,8 @@ Estado: ✅ código hecho y probado · 🟡 código hecho, falta corrida real/re
 | # | Figura | Paneles | Paso / archivo | Estado |
 |---|---|---|---|---|
 | **Fig. 1** | Ubicación | (a) contexto Sudamérica; (b) regional con fallas y epicentros; (c) costa de La Guaira con sitios y referencias | `mapas_base` → `mapa_ubicacion_*` | ✅ |
-| **Fig. 2** | Inventario de datos por banda | línea de tiempo: Umbra X, Sentinel-1 C, NISAR L, **ALOS-2 L** (ASF + UCSD), óptico (Planet, Vantor); escenas y pares usados, sismo marcado | `inventario` → `fig_inventario_*` | 🟡 nuevo (27-nov) |
-| **Fig. 3** | Interferogramas (franjas) por banda — «la historia visual» | filas = Sentinel-1 C · NISAR L · NISAR L (UCSD) · ALOS-2 L (UCSD); columnas = ASC · DESC; fase re-envuelta (1 ciclo = λ/2) | `comparacion` → `comparacion_franjas_*` | 🟡 nuevo (27-nov) |
+| **Fig. 2** | Inventario: (a) mapa de huellas y geometría de adquisición (`cobertura` → `fig_cobertura_*`), (b) línea de tiempo por banda | línea de tiempo: Umbra X, Sentinel-1 C, NISAR L, **ALOS-2 L** (ASF + UCSD), óptico (Planet, Vantor); escenas y pares usados, sismo marcado | `inventario` → `fig_inventario_*` | 🟡 nuevo (27-nov) |
+| **Fig. 3** | Interferogramas (franjas) por banda — «la historia visual» | filas = Sentinel-1 C · NISAR L · ALOS-2 L (UCSD, externo); NISAR de UCSD solo como validación (suplemento); columnas = ASC · DESC; fase re-envuelta (1 ciclo = λ/2) | `comparacion` → `comparacion_franjas_*` | 🟡 nuevo (27-nov) |
 | **Fig. 4** | Desplazamiento LOS por banda | igual que Fig. 3 pero en mm (misma escala para todas) | `comparacion` → `comparacion_modelos_*` | 🟡 |
 | **Fig. 5** | Este y Vertical por banda y L − C | (a) E C, (b) U C, (c) E L, (d) U L, (e) E L−C, (f) U L−C; solo píxeles con ASC + DESC, solo tierra | `descomp` → `descomposicion_C_vs_L_*` | 🟡 (corregido 27-nov: antes ±1–2 m) |
 | **Fig. 6** | Perfiles a través de la falla | (a) LOS por banda, mediana ± MAD; (b) Este/Vertical C vs L con GNSS CCS1 | `insar_metricas` → `insar_perfil_comparable_*` | 🟡 falta ± MAD y GNSS |
@@ -22,13 +22,13 @@ Estado: ✅ código hecho y probado · 🟡 código hecho, falta corrida real/re
 | **Fig. 9** | Daño a escala de edificio: X y óptico | por sitio: Vantor antes, Planet/Vantor después, Umbra X (amplitud, textura, NDLI), contornos de daño | `vantor` + `danio_sitios` | 🟡 rehacer con estilo |
 | **Fig. 10** | Integración | daño vs distancia a la falla y gradiente de deformación (por banda), curva ROC | nuevo | ⬜ |
 
-## B. Tablas del texto principal
+## B. Tablas del texto principal (máximo 3, norma SRL)
 | # | Tabla | Paso / archivo | Estado |
 |---|---|---|---|
 | Tabla 1 | Datos por banda y producto (sensor, banda, λ, dirección, track/frame, fechas, línea base, días tras el sismo, fuente) | `tablas` → `Tabla1_datos_*` | 🟡 |
 | Tabla 2 | Procesamiento y correcciones por producto (ionosfera, referencia, troposfera/marea, umbral de coherencia) | `tablas` → `Tabla2_procesamiento_*` | 🟡 |
-| Tabla 3 | Comparación C vs L: sesgo, RMSE, MAD, R², pendiente en Este y Vertical (píxeles comunes sobre tierra); y propio vs UCSD | `tablas` → `TablaS3_comparaciones_*` (pasa al texto) | 🟡 |
-| Tabla 4 | Detección de daño por banda (precisión, exhaustividad, F1, MCC, AUC) | nuevo | ⬜ |
+| Tabla 3 | Comparación C vs L (sesgo, RMSE, MAD, R², pendiente en Este y Vertical sobre tierra) **y detección de daño por banda**; propio vs UCSD → suplemento | `tablas` → `TablaS3_comparaciones_*` (pasa al texto) | 🟡 |
+| (→ Tabla 3) | La detección de daño por banda (P/R/F1/MCC/AUC) se une a la Tabla 3; SRL admite **10 figuras y 3 tablas** | nuevo | ⬜ |
 
 ## C. Suplemento (sin límite de paneles; se cita desde el texto)
 | # | Contenido | Paso / archivo | Estado |

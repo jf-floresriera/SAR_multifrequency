@@ -34,7 +34,7 @@ from rasterio.warp import Resampling, reproject
 
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
 from comun import T, TXT
-from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar, sin_etiquetas
+from estilo_figuras import ESTILO_FALLA, CMAPS, aplicar_estilo, etiqueta_panel, exportar, sin_etiquetas
 import matplotlib.pyplot as plt
 
 RAIZ = globals().get("RAIZ", "/content/drive/My Drive/InSAR_LaGuaira_Resultados/GUAIRA-SAR")
@@ -249,7 +249,7 @@ for idioma in ("es", "en"):
         for ax in axs[i]:
             ax.set_aspect(1 / np.cos(np.radians(10.5))); ax.tick_params(length=2.5, pad=1.5, labelsize=6)
             if FALLAS is not None:
-                FALLAS.plot(ax=ax, color="k", lw=0.4)
+                FALLAS.plot(ax=ax, **ESTILO_FALLA)
             sin_etiquetas(ax)
             ax.set_xlim(ext[0], ext[1]); ax.set_ylim(ext[2], ext[3])
             ax.set_ylabel(T('latitud', idioma) if ax is axs[i, 0] else '', fontsize=6.5)

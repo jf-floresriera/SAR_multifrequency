@@ -26,7 +26,7 @@ from rasterio.warp import Resampling, reproject
 
 _sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)) if "__file__" in globals() else globals().get("SRC", "."))
 from comun import T, TXT
-from estilo_figuras import CMAPS, aplicar_estilo, etiqueta_panel, exportar, OKABE_ITO, sin_etiquetas
+from estilo_figuras import contexto_mapa, CMAPS, aplicar_estilo, etiqueta_panel, exportar, OKABE_ITO, sin_etiquetas
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import TwoSlopeNorm
@@ -243,14 +243,7 @@ def _fig_mapas(vent, idioma, sub):
         ax.set_facecolor("#e8f0f7")
         im = ax.imshow(a, extent=[lon0, lon1, lat0, lat1], cmap=cm, norm=TwoSlopeNorm(0, -LIM, LIM),
                        interpolation="nearest", zorder=2)
-        if CTX["venezuela_estados"] is not None:
-            CTX["venezuela_estados"].boundary.plot(ax=ax, color="#444444", lw=0.35, zorder=3)
-        if CTX["fallas_activas_gem"] is not None:
-            CTX["fallas_activas_gem"].plot(ax=ax, color="#222222", lw=0.6, zorder=4)
-        if CTX["sitios_danio"] is not None:
-            CTX["sitios_danio"].plot(ax=ax, color="#0072B2", markersize=6, edgecolor="white", linewidth=0.4, zorder=5)
-        if CTX["epicentros_usgs"] is not None:
-            CTX["epicentros_usgs"].plot(ax=ax, color="#F0E442", marker="*", markersize=55, edgecolor="k", linewidth=0.5, zorder=6)
+        contexto_mapa(ax, CTX)
         sin_etiquetas(ax)
         ax.set_xlim(lon0, lon1); ax.set_ylim(lat0, lat1)
         ax.set_aspect(1 / np.cos(np.radians((lat0 + lat1) / 2)))

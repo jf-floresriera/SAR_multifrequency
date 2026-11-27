@@ -26,8 +26,21 @@ UMBRA_HTTPS = "https://umbra-open-data-catalog.s3.us-west-2.amazonaws.com/"
 MOSAICO_PRE = f"{PLANET}/pre-event/quarterly-mosaic/quarterly-mosaic-2026Q1.tif"
 
 
+def _reparar_main():
+    """Si una versión anterior del flujo borró `__main__` de sys.modules, se restaura (evita KeyError: '__main__' sin reiniciar)."""
+    import sys
+    if "__main__" not in sys.modules:
+        try:
+            from IPython import get_ipython
+            sys.modules["__main__"] = get_ipython().user_module
+        except Exception:
+            import types
+            sys.modules["__main__"] = types.ModuleType("__main__")
+
+
 class Explorador:
     def __init__(self, raiz, trabajo, celda_m=500, n_max=15):
+        _reparar_main()
         import geopandas as gpd
         from shapely.geometry import box
         from shapely.ops import unary_union
@@ -89,11 +102,12 @@ class Explorador:
 
     # ------------------------------------------------------------ mapa interactivo
     def mapa(self):
+        _reparar_main()
         import folium
         from folium.plugins import HeatMap
         c = self.zonas.geometry.unary_union.centroid if len(self.zonas) else self.danio.unary_union.centroid
-        m = folium.Map(location=[c.y, c.x], zoom_start=12, tiles="CartoDB positron", control_scale=True)
-        folium.TileLayer("OpenStreetMap", name="OSM").add_to(m)
+        m = folium.Map(location=[c.y, c.x], zoom_start=13, tiles="OpenStreetMap", control_scale=True)   # CartoDB ya exige clave / now needs a key
+        folium.TileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", attr="Esri", name="Satélite (solo para explorar) / satellite (exploration only)").add_to(m)
         cen = self.danio.geometry.centroid
         HeatMap(list(zip(cen.y, cen.x)), radius=12, blur=15, name="Daño (densidad) / damage density").add_to(m)
         estilos = [("Umbra (X)", self.umbra, "#0072B2"), ("Planet SkySat después / post", self.planet, "#CC79A7"),
@@ -139,6 +153,7 @@ class Explorador:
         return np.clip((x - lo) / max(hi - lo, 1e-6), 0, 1)
 
     def panel(self):
+        _reparar_main()
         import ipywidgets as w
         import matplotlib.pyplot as plt
         from IPython.display import display, clear_output

@@ -179,6 +179,7 @@ def correr(script, carpeta_logs, src, notebook="", version=""):
                            if m not in ("comun", "maestro") and not m.startswith("_") and getattr(mod, "__file__", None)
                            and os.path.dirname(os.path.abspath(mod.__file__)) == os.path.abspath(src)]:
                     del sys.modules[_m]
+                sys.modules.setdefault("__main__", get_ipython().user_module)   # repara sesiones afectadas por el error anterior
                 ns = get_ipython().user_ns          # equivalente a %run -i / same as %run -i
                 ns["__file__"] = ruta_script
                 exec(compile(open(ruta_script, encoding="utf-8").read(), ruta_script, "exec"), ns)

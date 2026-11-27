@@ -104,6 +104,28 @@ class Explorador:
         print(f"{len(self.zonas)} zonas candidatas (Umbra + Planet después + antes), ordenadas por edificios dañados:")
         print(self.zonas.drop(columns="geometry").round(5).to_string(index=False))
 
+    # ------------------------------------------------------------ zonas manuales (coordenadas que da el autor)
+    def agregar(self, puntos, lado_m=500):
+        """puntos = {"nombre": (lat, lon), ...}. Agrega zonas aunque NO cumplan las tres condiciones e informa qué datos hay en cada una.
+        Adds author-given zones even if they do not meet all conditions, and reports which data exist there."""
+        import geopandas as gpd
+        from shapely.geometry import Point, box
+        filas = []
+        for nom, (lat, lon) in puntos.items():
+            p = Point(lon, lat)
+            dlon, dlat = lado_m / 2 / (111320 * np.cos(np.radians(lat))), lado_m / 2 / 111320
+            cel = box(lon - dlon, lat - dlat, lon + dlon, lat + dlat)
+            filas.append(dict(zona=nom, n_danio=int(self.danio.intersects(cel).sum()), lon=lon, lat=lat,
+                              umbra=int(self.umbra.contains(p).sum()), planet_post=int(self.planet.contains(p).sum()) if len(self.planet) else 0,
+                              vantor_pre=int(((self.vantor.fase == "pre") & self.vantor.contains(p)).sum()), geometry=cel))
+        nuevas = gpd.GeoDataFrame(filas, crs=4326)
+        nuevas["condiciones"] = ["✅ X + Planet + antes" if (r.umbra and r.planet_post) else
+                                 ("⚠️ sin Umbra (X)" if not r.umbra else "⚠️ sin Planet después") for r in nuevas.itertuples()]
+        self.zonas = pd.concat([nuevas, self.zonas[~self.zonas.zona.isin(nuevas.zona)]], ignore_index=True)
+        self.zonas = gpd.GeoDataFrame(self.zonas, geometry="geometry", crs=4326)
+        print("Zonas agregadas (edificios dañados en una celda de", lado_m, "m):")
+        print(nuevas.drop(columns="geometry").round(5).to_string(index=False))
+
     # ------------------------------------------------------------ mapa interactivo
     def mapa(self):
         _reparar_main()

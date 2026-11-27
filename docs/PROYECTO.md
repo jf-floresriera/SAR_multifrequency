@@ -34,9 +34,9 @@
 
 | Banda / Band | Sensor | Productos / Products | Fechas 2026 | Licencia / Licence | Estado / Status |
 |---|---|---|---|---|---|
-| C (5.55 cm) | Sentinel-1A/1D | HyP3 INSAR_GAMMA 40 m + look vectors: **025D** (18→25 jun), **033A** (18→25 jun) | | Copernicus | 025D ✅ (40 m, 3 copias; usar 1) · 033A ✅ ya descargado a 80 m (5-nov; NO reenviar) |
-| L (23.8 cm) | NISAR | GUNW cosísmicos: **061A** (18→30 jun), **162A** (13→25 jun), **126D** (22 jun→4 jul), 054D | | NASA | 061A, 162A y 126D ✅ en Drive (2,3 GB c/u); 054D no cubre La Guaira (0 %), no se necesita |
-| L (23.8 cm) | ALOS-2 | ScanSAR L1.1 (JAXA liberó 3-jul-2026; espejo ASF) | desde 30 jun | JAXA | ⏳ buscar |
+| C (5.55 cm) | Sentinel-1A/1D | HyP3 INSAR_GAMMA 40 m + look vectors: **025D** (18→25 jun), **033A** (18→25 jun) | | Copernicus | 025D ✅ 40 m · 033A ✅ 40 m y 80 m (no reenviar); falta el par **pre-sísmico** 033A 13→18 jun para coherencia (ver METODOLOGIA §6) |
+| L (23.8 cm) | NISAR | GUNW cosísmicos: **061A** (18→30 jun), **162A** (13→25 jun), **126D** (22 jun→4 jul), 054D | | NASA | 6 GUNW en Drive (162A F006+F007, 061A F007, 054D F083, 126D F083+F084) ✅; 054D **sí** aporta (descendente, 54 % de tierra coherente); falta el par pre-sísmico 126D 10→22 jun |
+| L (23.8 cm) | ALOS-2 | ScanSAR L1.1 (JAXA liberó 3-jul-2026; espejo ASF) | desde 30 jun | JAXA | 🟡 solo LOS procesados por UCSD (sin corrección ionosférica); escenas 2026 no públicas en ASF |
 | X (3.1 cm) | Umbra | 26 spotlight GEC/SICD/SIDD (post-evento, sin geometría repetida → solo amplitud) | 26 jun → 2 jul | CC BY 4.0 | inventariado |
 | Óptico | Planet SkySat/PlanetScope | 17 post + mosaico Q1-2026 (pre) | 26–28 jun | **CC BY-NC 4.0** (no redistribuir) | URLs resueltas |
 | GNSS | CCS1 y otras | validación | | citado | coordenadas CCS1 pendientes |
@@ -49,6 +49,8 @@
 ---
 
 ## 3. Método / Method (flujo / workflow)
+
+> 🇪🇸 **Versión vigente y detallada: [`METODOLOGIA.md`](METODOLOGIA.md)** (preguntas P1–P3, correcciones, comparación C vs L, daño por banda, estado). 🇬🇧 **Current detailed version: [`METODOLOGIA.md`](METODOLOGIA.md).**
 
 | Paso | 🇪🇸 | 🇬🇧 | Código |
 |---|---|---|---|

@@ -363,10 +363,19 @@ class Explorador:
             n = 400
             o = self._recorte(dpost.value, centro["lon"], centro["lat"], dl.value, n=n).mean(0)
             u, _ = _umbra(dum.value, centro["lon"], centro["lat"], dl.value, n=n)
-            u = np.where(u > 0, np.log10(u), np.nan); u = np.nan_to_num(u, nan=np.nanmedian(u))
+            val = np.isfinite(u) & (u > 0)
+            if val.mean() < 0.3:
+                msg.value = f"⚠️ Umbra casi sin datos en esta ventana ({val.mean() * 100:.0f} % válido): mueva la ventana o elija otra escena"; return
+            u = np.where(val, np.log10(np.where(val, u, 1.0)), np.nan); u = np.where(np.isfinite(u), u, np.nanmedian(u))
+            o = np.where(np.isfinite(o), o, np.nanmedian(o))
             def bordes(x):
                 x = gaussian_filter(x, 2); g = np.hypot(sobel(x, 0), sobel(x, 1)); return (g - g.mean()) / (g.std() + 1e-9)
-            (fy, fx), err, _ = phase_cross_correlation(bordes(o), bordes(u), upsample_factor=4)
+            mo, mu = np.ones_like(o, bool), val
+            (fy, fx), err, _ = phase_cross_correlation(bordes(o), bordes(u), upsample_factor=4,
+                                                         reference_mask=mo, moving_mask=mu) if not val.all() else \
+                phase_cross_correlation(bordes(o), bordes(u), upsample_factor=4)
+            if np.ndim(err) == 0 and not np.isfinite(err):
+                err = np.nan
             px = dl.value / n
             # desplazamiento a aplicar a Umbra: fila → norte (las filas crecen hacia el sur), columna → este
             dE.value = int(np.clip(round(-fx * px / 5) * 5, -300, 300)); dN.value = int(np.clip(round(fy * px / 5) * 5, -300, 300))
@@ -396,7 +405,10 @@ class Explorador:
                         ax.text(0.5, 0.5, f"no se pudo leer\n{str(e)[:60]}", ha="center", transform=ax.transAxes)
                     lab = {d.value: d.label for d in (dpre, dpost, dum)}.get(url, "")
                     ax.set_title(f"{tit}\n{lab}" + (f"\n{nota_u}" if sar and nota_u else ""), fontsize=8.5)
-                fig.suptitle(f"{dz.value} · {centro['lat']:.5f}, {centro['lon']:.5f} · ventana {dl.value} m", x=0.01, ha="left")
+                from shapely.geometry import box as _bx
+                dlo = dl.value / 2 / (111320 * np.cos(np.radians(centro["lat"]))); dla = dl.value / 2 / 111320
+                n_v = int(self.danio.intersects(_bx(centro["lon"] - dlo, centro["lat"] - dla, centro["lon"] + dlo, centro["lat"] + dla)).sum())
+                fig.suptitle(f"{dz.value} · {centro['lat']:.5f}, {centro['lon']:.5f} · ventana {dl.value} m · {n_v} edificios dañados en la ventana", x=0.01, ha="left")
                 plt.tight_layout()
                 self._fig = fig
                 fig.savefig(f"{self.capturas}/vista_{dz.value}_{dl.value}m_{pd.Timestamp.now():%Y%m%d_%H%M%S}.png", dpi=110)
@@ -407,7 +419,14 @@ class Explorador:
             # every save is a new CONFIGURATION: the same zone can be saved several times
             r = self.zonas[self.zonas.zona == dz.value].iloc[0]
             prev = pd.read_csv(self.salida) if os.path.exists(self.salida) else pd.DataFrame()
-            fila = dict(zona=dz.value, lat=round(centro["lat"], 6), lon=round(centro["lon"], 6), ventana_m=dl.value, edificios_danados=r.n_danio,
+            from shapely.geometry import box as _bx
+            dlo = dl.value / 2 / (111320 * np.cos(np.radians(centro["lat"]))); dla = dl.value / 2 / 111320
+            vent = _bx(centro["lon"] - dlo, centro["lat"] - dla, centro["lon"] + dlo, centro["lat"] + dla)
+            dv = self.danio[self.danio.intersects(vent)]
+            por_clase = dv["clase"].astype(str).value_counts().to_dict() if "clase" in dv else {}
+            fila = dict(zona=dz.value, lat=round(centro["lat"], 6), lon=round(centro["lon"], 6), ventana_m=dl.value,
+                        edificios_danados=int(len(dv)), destruidos=int(sum(v for k, v in por_clase.items() if "destru" in k.lower())),
+                        danados=int(sum(v for k, v in por_clase.items() if "dañ" in k.lower() or "dan" in k.lower())),
                         umbra_dE_m=dE.value, umbra_dN_m=dN.value, umbra_relieve_corregido=corr.value, umbra_invertido=inv_.value,
                         antes=dpre.label, url_antes=dpre.value, despues=dpost.label, url_despues=dpost.value,
                         umbra=dum.label, url_umbra=dum.value, nota=tnota.value, fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
@@ -421,7 +440,8 @@ class Explorador:
                 self._fig.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{dl.value}m.png", dpi=150)
                 fila["captura"] = f"ELEGIDA_{fila['config']}_{dl.value}m.png"
             pd.concat([prev, pd.DataFrame([fila])], ignore_index=True).to_csv(self.salida, index=False)
-            msg.value = f"✅ Guardada <b>{fila['config']}</b> (ventana {dl.value} m) en {self.salida} · total {len(prev) + 1} configuraciones"
+            msg.value = (f"✅ Guardada <b>{fila['config']}</b> (ventana {dl.value} m) · {fila['edificios_danados']} edificios dañados en la ventana "
+                         f"({fila['destruidos']} destruidos) · total {len(prev) + 1} configuraciones")
 
         def borrar(_):
             if not os.path.exists(self.salida):

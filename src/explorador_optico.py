@@ -62,7 +62,8 @@ class Explorador:
         inv = pd.read_csv(f"{ud}/umbra_inventario.csv")
         lst = pd.read_csv(f"{ud}/umbra_listado_completo.csv")
         gec = lst[lst.key.str.contains("GEC", case=False) & lst.key.str.lower().str.endswith((".tif", ".tiff"))]
-        um = um[["task_id", "geometry"]].merge(inv[["task_id", "inicio_utc", "satelite", "incidencia_deg", "direccion_mirada"]], on="task_id")
+        cols_ = [c for c in ("task_id", "inicio_utc", "satelite", "incidencia_deg", "direccion_mirada", "azimut_deg", "squint_deg") if c in inv]
+        um = um[["task_id", "geometry"]].merge(inv[cols_], on="task_id")
         um["url"] = um.task_id.map(lambda t: UMBRA_HTTPS + gec[gec.key.str.contains(t)].key.iloc[0] if gec.key.str.contains(t).any() else None)
         self.umbra = um[um.url.notna()].reset_index(drop=True)
         # --- Planet SkySat después (URLs ya resueltas por danio_sitios)
@@ -168,6 +169,51 @@ class Explorador:
                 b = [i for i in bandas if i <= v.count]
                 a = v.read(b).astype("float32")
         return a
+
+    def _dem(self, lon, lat, lado, n):
+        """Alturas (m) sobre la misma malla que _recorte, del DEM GLO-30 que entrega HyP3 / heights on the chip grid."""
+        import glob, rasterio
+        from rasterio.vrt import WarpedVRT
+        from rasterio.transform import from_origin
+        from rasterio.enums import Resampling
+        from pyproj import Transformer
+        x, y = Transformer.from_crs(4326, 32619, always_xy=True).transform(lon, lat)
+        tr = from_origin(x - lado / 2, y + lado / 2, lado / n, lado / n)
+        out = np.full((n, n), np.nan, "float32")
+        for f in sorted(glob.glob(f"{self.raiz}/01_datos_crudos/sentinel1_hyp3/*/*_dem.tif")):
+            with rasterio.open(f) as s, WarpedVRT(s, crs="EPSG:32619", transform=tr, width=n, height=n, resampling=Resampling.bilinear) as v:
+                a = v.read(1).astype("float32")
+                a[a <= -100] = np.nan
+                out = np.where(np.isfinite(out), out, np.where(a == 0, np.nan, a))
+        return np.nan_to_num(out, nan=0.0)
+
+    def _umbra_orto(self, url, lon, lat, lado, n=500, invertir=False):
+        """Umbra GEC está sobre el ELIPSOIDE: un punto a altura h aparece corrido h·cot(θ) HACIA el satélite.
+        Se corrige muestreando, para cada punto del terreno, la posición corrida (corrección de relieve aproximada, sin edificios).
+        Umbra GEC is ellipsoid-projected: a point at height h appears shifted h·cot(θ) toward the sensor; approximate terrain correction."""
+        from scipy.ndimage import map_coordinates
+        r = self.umbra[self.umbra.url == url]
+        if not len(r):
+            return self._recorte(url, lon, lat, lado, bandas=(1,), n=n)[0], "sin metadatos"
+        r = r.iloc[0]
+        th = np.radians(float(r.incidencia_deg))
+        az = float(r.azimut_deg) if "azimut_deg" in r and pd.notna(r.azimut_deg) else None
+        if az is None:
+            return self._recorte(url, lon, lat, lado, bandas=(1,), n=n)[0], "sin azimut: sin corrección"
+        margen = 500.0
+        nb = int(round(n * (lado + 2 * margen) / lado))
+        grande = self._recorte(url, lon, lat, lado + 2 * margen, bandas=(1,), n=nb)[0]
+        h = self._dem(lon, lat, lado, n)
+        px = lado / n
+        d = h / np.tan(th)                                        # corrimiento horizontal (m) / horizontal shift
+        ux, uy = np.sin(np.radians(az)), np.cos(np.radians(az))   # azimut de mirada (satélite → suelo) / look azimuth
+        sg = 1.0 if invertir else -1.0                            # el punto aparece corrido hacia el satélite (−mirada)
+        yy, xx = np.mgrid[0:n, 0:n]
+        X = (xx + 0.5) * px - lado / 2; Y = lado / 2 - (yy + 0.5) * px
+        Xs, Ys = X + sg * d * ux, Y + sg * d * uy
+        col = (Xs + lado / 2 + margen) / px - 0.5; fil = (lado / 2 + margen - Ys) / px - 0.5
+        img = map_coordinates(grande, [fil, col], order=1, mode="constant", cval=0.0)
+        return img.astype("float32"), f"relieve corregido (θ={np.degrees(th):.0f}°, az={az:.0f}°, h máx {h.max():.0f} m)"
 
     def _rgb(self, a):
         a = np.moveaxis(a[:3], 0, -1)
@@ -293,6 +339,14 @@ class Explorador:
         bauto = w.Button(description="Alinear auto / auto-align", button_style="primary", layout=w.Layout(width="200px"))
         bcero = w.Button(description="Desfase 0", layout=w.Layout(width="100px"))
         bcero.on_click(lambda _: (setattr(dE, "value", 0), setattr(dN, "value", 0)))
+        corr = w.Checkbox(value=True, description="Corregir relieve (DEM) / terrain-correct", indent=False)
+        inv_ = w.Checkbox(value=False, description="invertir sentido / flip", indent=False)
+
+        def _umbra(url, lo_, la_, lado, n=500):
+            if corr.value:
+                a, nota = self._umbra_orto(url, lo_, la_, lado, n=n, invertir=inv_.value)
+                return a, nota
+            return self._recorte(url, lo_, la_, lado, bandas=(1,), n=n)[0], "sin corrección de relieve"
 
         def _desplazado():
             # ΔE/ΔN = cuánto aparece DESPLAZADA la imagen Umbra (+ = hacia el este/norte); se lee Umbra en centro + Δ para alinearla
@@ -308,7 +362,7 @@ class Explorador:
             msg.value = "Alineando… / aligning…"
             n = 400
             o = self._recorte(dpost.value, centro["lon"], centro["lat"], dl.value, n=n).mean(0)
-            u = self._recorte(dum.value, centro["lon"], centro["lat"], dl.value, bandas=(1,), n=n)[0]
+            u, _ = _umbra(dum.value, centro["lon"], centro["lat"], dl.value, n=n)
             u = np.where(u > 0, np.log10(u), np.nan); u = np.nan_to_num(u, nan=np.nanmedian(u))
             def bordes(x):
                 x = gaussian_filter(x, 2); g = np.hypot(sobel(x, 0), sobel(x, 1)); return (g - g.mean()) / (g.std() + 1e-9)
@@ -327,12 +381,16 @@ class Explorador:
                 fig, axs = plt.subplots(1, 3, figsize=(dtam.value, dtam.value * 0.36))
                 for ax, (tit, url, sar) in zip(axs, (("ANTES / before", dpre.value, False), ("DESPUÉS / after", dpost.value, False),
                                                      ("UMBRA banda X / X-band", dum.value, True))):
-                    ax.axis("off")
+                    ax.axis("off"); nota_u = ""
                     if not url:
                         ax.set_title(tit + "\n(sin escena)"); continue
                     try:
                         lo_, la_ = _desplazado() if sar else (centro["lon"], centro["lat"])
-                        a = self._recorte(url, lo_, la_, dl.value, bandas=(1,) if sar else (1, 2, 3))
+                        if sar:
+                            a0, nota_u = _umbra(url, lo_, la_, dl.value)
+                            a = a0[None]
+                        else:
+                            a = self._recorte(url, lo_, la_, dl.value, bandas=(1, 2, 3))
                         ax.imshow(self._sar(a) if sar else self._rgb(a), cmap="gray" if sar else None)
                     except Exception as e:
                         ax.text(0.5, 0.5, f"no se pudo leer\n{str(e)[:60]}", ha="center", transform=ax.transAxes)
@@ -351,7 +409,7 @@ class Explorador:
             r = self.zonas[self.zonas.zona == dz.value].iloc[0]
             prev = pd.read_csv(self.salida) if os.path.exists(self.salida) else pd.DataFrame()
             fila = dict(zona=dz.value, lat=round(centro["lat"], 6), lon=round(centro["lon"], 6), ventana_m=dl.value, edificios_danados=r.n_danio,
-                        umbra_dE_m=dE.value, umbra_dN_m=dN.value,
+                        umbra_dE_m=dE.value, umbra_dN_m=dN.value, umbra_relieve_corregido=corr.value, umbra_invertido=inv_.value,
                         antes=dpre.label, url_antes=dpre.value, despues=dpost.label, url_despues=dpost.value,
                         umbra=dum.label, url_umbra=dum.value, nota=tnota.value, fecha_eleccion=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"))
             if len(prev):
@@ -387,7 +445,7 @@ class Explorador:
 
         dz.observe(opciones, names="value"); bver.on_click(ver); busar.on_click(usar); bborrar.on_click(borrar); blista.on_click(listar)
         opciones()
-        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, w.VBox([w.HTML('<b>⚙️ Alinear Umbra (X) con el óptico</b> — Umbra GEC no está corregido por relieve: muévalo hasta que calles y edificios coincidan'), w.HBox([dE, dN]), w.HBox([bauto, bcero])], layout=w.Layout(border='1px solid #0072B2', padding='4px', margin='4px 0')), tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
+        caja = [w.HBox([dz, dl]), w.HBox([dtam, dalto]), w.HBox([bo, bn, bs, be, paso, lblc]), dpre, dpost, dum, w.VBox([w.HTML('<b>⚙️ Alinear Umbra (X) con el óptico</b> — Umbra GEC no está corregido por relieve: muévalo hasta que calles y edificios coincidan'), w.HBox([dE, dN]), w.HBox([bauto, bcero, corr, inv_])], layout=w.Layout(border='1px solid #0072B2', padding='4px', margin='4px 0')), tnota, w.HBox([bver, busar, bborrar, blista]), msg, out]
         if mapa_w is not None:
             caja.insert(1, mapa_w)
         display(w.VBox(caja))

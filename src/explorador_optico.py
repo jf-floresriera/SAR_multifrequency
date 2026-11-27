@@ -94,7 +94,8 @@ class Explorador:
         self.capturas = f"{raiz}/04_figuras/borradores/explorador"           # capturas de lo que se miró / screenshots of what was viewed
         os.makedirs(self.capturas, exist_ok=True)
         self._fig = None
-        self.recortes = f"{raiz}/02_procesados/recortes_zonas"             # recortes multibanda por configuración / multiband chips
+        self.recortes = f"{raiz}/02_procesados/recortes_zonas"
+        self.f_alin = f"{raiz}/05_documentacion/alineacion_manual.json"     # desfases manuales por sitio / manual offsets             # recortes multibanda por configuración / multiband chips
         # --- daño de referencia (destruido / dañado)
         d = gpd.read_file(f"{raiz}/01_datos_crudos/danio_referencia/danio_referencia.gpkg", layer="edificios_danio")
         if "clase" in d:
@@ -486,7 +487,8 @@ class Explorador:
                 cache_al[clave_al] = al
                 alin.append(al)
                 print(f"   Umbra {k} ({lab_u.split('·')[-2].strip()}, {lab_u.split('·')[-1].strip()}): ΔE {al['dE']} m, ΔN {al['dN']} m, "
-                      f"corrección «{al['variante']}», confianza {al['conf']:.1f}σ" + ("" if al["conf"] >= CONF_MIN else " (débil: desfase dejado en 0)"))
+                      + ("desfase MANUAL guardado / saved manual offset" if "fecha" in al else
+                         f"corrección «{al['variante']}», confianza {al['conf']:.1f}σ" + ("" if al["conf"] >= CONF_MIN else " (débil: desfase dejado en 0)")))
             for lado in lados:
                 lado = float(lado)
                 cx, cy = to_utm.transform(lon, lat)
@@ -563,6 +565,83 @@ class Explorador:
         t = pd.DataFrame(filas)
         return t[[c for c in ("config", "zona", "lat", "lon", "ventana_m", "edificios_danados", "destruidos") if c in t]]
 
+    def _alin_guardada(self, sitio):
+        if os.path.exists(self.f_alin):
+            return json.load(open(self.f_alin, encoding="utf-8")).get(sitio)
+        return None
+
+    def alinear_manual(self, sitio, lat, lon, lado=500, inicial=None, margen=350, px=1.0):
+        """ALINEACIÓN MANUAL con puntos de referencia: barras ΔE/ΔN para cada Umbra (1 y 2), con los BORDES del óptico en
+        verde y una cuadrícula cada 50 m encima de la Umbra. «Guardar» escribe el desfase del sitio en
+        05_documentacion/alineacion_manual.json; ex.teselas() y ex.lote() lo usan automáticamente para ese sitio.
+        Manual alignment: sliders per Umbra scene, optical edges overlaid; saved per site and reused by teselas/lote."""
+        import ipywidgets as w
+        import matplotlib.pyplot as plt
+        from IPython.display import display, clear_output
+        from scipy.ndimage import gaussian_filter, sobel
+        esc = self._escenas(lon, lat)
+        import re as _re
+        ums = []
+        for inc_, mir_ in ((48, "left"), (27, "right")):
+            c = [u for u in esc["umbras"] if mir_ in u[0] and abs(float(_re.search(r"inc (\d+)", u[0]).group(1)) - inc_) <= 1.5]
+            if c:
+                ums.append(c[0])
+        if not ums:
+            print("Este sitio no tiene las Umbra de 48° izq. ni 27° der."); return
+        n = int(round(lado / px)); mpx = int(round(margen / px)); nb = n + 2 * mpx
+        print("Leyendo imágenes (una sola vez)… / reading images once…")
+        opt = self._recorte(esc["despues"][1], lon, lat, lado, n=n)[:3]
+        rgb = self._rgb(opt)
+        g = gaussian_filter(opt.mean(0), 1.2); bor = np.hypot(sobel(g, 0), sobel(g, 1))
+        bor = bor > np.percentile(bor, 88)                                 # bordes fuertes del óptico / strong optical edges
+        guardada = self._alin_guardada(sitio) or {}
+        U, sl = [], []
+        for k, (lab, url) in enumerate(ums, start=1):
+            a = self._recorte(url, lon, lat, nb * px, bandas=(1,), n=nb)[0]
+            U.append(self._sar(a[None]))
+            v0 = guardada.get(url, {}) or (inicial or {}).get(k, {})
+            sl.append((w.IntSlider(value=int(v0.get("dE", 0)), min=-margen, max=margen, step=5, description=f"U{k} ΔE (m)",
+                                   continuous_update=False, layout=w.Layout(width="420px")),
+                       w.IntSlider(value=int(v0.get("dN", 0)), min=-margen, max=margen, step=5, description=f"U{k} ΔN (m)",
+                                   continuous_update=False, layout=w.Layout(width="420px"))))
+        out = w.Output(); msg = w.HTML()
+        malla = np.zeros((n, n), bool); paso = int(round(50 / px))
+        malla[::paso, :] = True; malla[:, ::paso] = True
+
+        def dibujar(*_):
+            with out:
+                clear_output(wait=True)
+                fig, axs = plt.subplots(1, 1 + len(U), figsize=(5.2 * (1 + len(U)), 5.4))
+                axs[0].imshow(rgb); axs[0].imshow(np.ma.masked_where(~malla, malla), cmap="autumn", alpha=0.5)
+                axs[0].set_title(f"Óptico DESPUÉS · {esc['despues'][0]}\n(cuadrícula 50 m)", fontsize=9)
+                for k, (u, (sE, sN)) in enumerate(zip(U, sl)):
+                    dx = int(round(sE.value / px)); dy = int(round(-sN.value / px))
+                    sub = u[mpx + dy:mpx + dy + n, mpx + dx:mpx + dx + n]
+                    axs[k + 1].imshow(sub, cmap="gray")
+                    axs[k + 1].imshow(np.ma.masked_where(~bor, bor), cmap="brg_r", alpha=0.9, interpolation="nearest")
+                    axs[k + 1].imshow(np.ma.masked_where(~malla, malla), cmap="autumn", alpha=0.5)
+                    axs[k + 1].set_title(f"{ums[k][0].replace('Umbra-10 · ', '')}\nΔE {sE.value} m · ΔN {sN.value} m "
+                                         f"(verde = bordes del óptico)", fontsize=9)
+                for ax in axs:
+                    ax.set_xticks([]); ax.set_yticks([])
+                fig.tight_layout(); plt.show()
+
+        for sE, sN in sl:
+            sE.observe(dibujar, names="value"); sN.observe(dibujar, names="value")
+        bg = w.Button(description="Guardar desfase / save", button_style="success")
+
+        def guardar(_):
+            todo = json.load(open(self.f_alin, encoding="utf-8")) if os.path.exists(self.f_alin) else {}
+            todo[sitio] = {url: dict(dE=sE.value, dN=sN.value, variante="sin", fecha=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
+                                     lat=lat, lon=lon) for (lab, url), (sE, sN) in zip(ums, sl)}
+            json.dump(todo, open(self.f_alin, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            msg.value = f"✅ Desfase de <b>{sitio}</b> guardado: " + " · ".join(f"U{k + 1} ΔE {a.value} ΔN {b.value} m" for k, (a, b) in enumerate(sl))
+        bg.on_click(guardar)
+        display(w.VBox([w.HTML(f"<b>{sitio}</b>: mueva cada Umbra hasta que calles, espigones y bordes de edificios bajos caigan "
+                               "sobre las líneas VERDES (bordes del óptico). Las torres no coincidirán (se inclinan hacia el satélite)."),
+                        *[w.HBox(list(x)) for x in sl], bg, msg, out]))
+        dibujar()
+
     def teselas(self, sitios, ventana=500, **kw):
         """Cubre el área de cada sitio con ventanas de `ventana` m (cuadrícula centrada en la coordenada dada).
         sitio = dict(nombre, lat, lon, area=lado total en m (p. ej. 1000 → 2×2 ventanas de 500 m)).
@@ -579,6 +658,9 @@ class Explorador:
                 for j in range(m):                                     # columnas de oeste a este / columns west→east
                     x = x0 + (j - (m - 1) / 2) * ventana; y = y0 - (i - (m - 1) / 2) * ventana
                     lo, la = b.transform(x, y)
+                    alin_ = self._alin_guardada(s_["nombre"])
+                    if alin_:
+                        s_ = dict(s_, alineacion=alin_)
                     puntos.append(dict(s_, nombre=f"{s_['nombre']}{'ABCDEFGH'[i]}{j + 1}" if m > 1 else s_["nombre"], lat=la, lon=lo,
                                        grupo=s_["nombre"], centro_grupo=(s_["lon"], s_["lat"])))
         print(f"{len(puntos)} ventanas de {ventana} m en {len(sitios)} sitios / windows")

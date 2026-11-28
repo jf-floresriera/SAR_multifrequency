@@ -37,11 +37,16 @@ if DESCARGAR:
     por_nombre = {}
     for j in sorted(listos, key=lambda j: j.request_time):
         por_nombre[j.name] = j
-    existentes = set(os.listdir(DESTINO))
+    import re as _re
+    # clave = par de escenas + resolución (sin el sufijo aleatorio _XXXX); se mira también en _duplicados,
+    # si no, el duplicado movido se volvía a bajar en cada corrida / key = scene pair + resolution, also in _duplicados
+    existentes = set(os.listdir(DESTINO)) | (set(os.listdir(f"{DESTINO}/_duplicados")) if os.path.isdir(f"{DESTINO}/_duplicados") else set())
     for nombre, j in por_nombre.items():
         zipname = j.files[0]["filename"] if j.files else None
-        if zipname and (zipname in existentes or zipname.replace(".zip", "") in existentes):
-            print(f"   ya descargado / already downloaded: {nombre} ({zipname})")
+        clave = _re.sub(r"_[0-9A-Fa-f]{4}\.zip$", "", zipname) if zipname else None
+        par_ya = [f for f in existentes if clave and f.startswith(clave) and (f.endswith(".zip") or os.path.isdir(f"{DESTINO}/{f}"))]
+        if zipname and par_ya:
+            print(f"   ya descargado / already downloaded: {nombre} ({sorted(par_ya)[0]})")
             continue
         j.download_files(DESTINO)
         print(f"   ✓ descargado / downloaded: {nombre} ({zipname})")

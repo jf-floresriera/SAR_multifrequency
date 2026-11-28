@@ -37,3 +37,5 @@
 
 
 | 2026-11-26 | **Ionosfera (banda L)** | `nisar_gunw_a_geotiff.py` resta la `ionospherePhaseScreen` del GUNW (división espectral, frecuencias A y B) y guarda `*_los_iono_m.tif`; `descomposicion_C_L.py` e `insar_metricas.py` la usan por defecto (`USAR_IONO=True`). Si falta, el título del mapa y la tabla dicen «SIN corr. iono.». ALOS-2 de UCSD NO está corregido (lo declaran los autores). Banda C: ionosfera despreciable, troposfera sin corregir (R² fase–elevación ≈ 0,25). | **Ionosphere (L-band):** NISAR GUNW ionosphere screen is subtracted and `*_los_iono_m.tif` saved; downstream scripts use it by default. If missing, the map title and table state "NO iono. corr.". UCSD ALOS-2 is NOT corrected (authors say so). C-band: ionosphere negligible, troposphere uncorrected. |
+
+| 2026-11-28 | Redescarga del 025D | `hyp3_estado` y `descargas` comparan por par de escenas + resolución y miran también `_duplicados` | El duplicado movido se volvía a bajar (1 GB) en cada corrida |

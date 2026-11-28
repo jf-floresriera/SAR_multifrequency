@@ -55,7 +55,15 @@ for nombre in ["S1_025D_cosismico", "S1_033A_cosismico"]:
         jobs = hyp3.watch(jobs)
     ok = jobs.filter_jobs(succeeded=True, running=False, failed=False)
     if len(ok):
-        ok.download_files(f"{BASE}/sentinel1_hyp3")
+        import re as _re
+        _d = f"{BASE}/sentinel1_hyp3"
+        _hay = set(os.listdir(_d)) | (set(os.listdir(f"{_d}/_duplicados")) if os.path.isdir(f"{_d}/_duplicados") else set())
+        _claves = {_re.sub(r"_[0-9A-Fa-f]{4}\.zip$", "", j.files[0]["filename"]) for j in ok if j.files}
+        if all(any(f.startswith(c) for f in _hay) for c in _claves):
+            # mismo par de escenas + resolución ya en Drive (o en _duplicados): no se vuelve a bajar (el 025D se envió 4 veces)
+            print(f"   {nombre}: ya en Drive / already on Drive ({len(ok)} trabajo(s) del mismo par: no se redescarga)")
+        else:
+            list(ok)[-1].download_files(_d)          # un solo trabajo por par / a single job per pair
         registro.append(("Sentinel-1 HyP3 INSAR_GAMMA (ASF)", nombre))
     else:
         print(f"   {nombre}: aún no terminado / not finished yet -> {jobs}")

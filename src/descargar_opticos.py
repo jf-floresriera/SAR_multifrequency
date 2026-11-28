@@ -56,8 +56,8 @@ def _bajar(url, destino):
     """Descarga por partes con reanudación (Range) / chunked download with resume."""
     os.makedirs(os.path.dirname(destino), exist_ok=True)
     total = _tam(url)
-    if os.path.exists(destino) and total and os.path.getsize(destino) == total:
-        return "ya estaba / already there"
+    if os.path.exists(destino) and os.path.getsize(destino) > 0 and (not total or os.path.getsize(destino) == total):
+        return "ya estaba / already there"           # Planet no informa el tamaño: basta con que exista / Planet gives no size
     tmp = destino + ".parcial"
     hecho = os.path.getsize(tmp) if os.path.exists(tmp) else 0
     cab = {"Range": f"bytes={hecho}-"} if hecho else {}
@@ -134,7 +134,10 @@ if T.empty:
     T = pd.DataFrame(columns=["fuente", "id", "fase", "fecha", "nubes_pct", "activo", "bandas", "url", "destino", "item", "carpeta"])
 print(f"Calculando tamaños de {len(T)} archivos… / sizing files…")
 T["GB"] = [round(_tam(u) / 1e9, 2) for u in T.url]
-T["en_drive"] = [os.path.exists(d) and abs(os.path.getsize(d) / 1e9 - g) < 0.01 for d, g in zip(T.destino, T.GB)]
+T["en_drive"] = [os.path.exists(d) and os.path.getsize(d) > 0 and (g == 0 or abs(os.path.getsize(d) / 1e9 - g) < 0.01)
+                 for d, g in zip(T.destino, T.GB)]
+if (T.GB == 0).any():
+    print(f"Nota: {int((T.GB == 0).sum())} archivos no informan tamaño (Planet): el total en GB los subestima / sizes unknown")
 res = T.groupby(["fuente", "fase"]).agg(escenas=("id", "nunique"), archivos=("activo", "size"), GB=("GB", "sum"),
                                          ya_en_drive=("en_drive", "sum")).reset_index()
 print(res.to_string(index=False))

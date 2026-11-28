@@ -214,7 +214,7 @@ for idi in ("es", "en"):
         r_ = R[(R.banda == b_) & (R.geometria == g_)]
         txt = f"δ = {r_.delta_destruido_vs_sin.iloc[0]:+.2f} · AUC = {r_.auc_destruido.iloc[0]:.2f}" if len(r_) else ""
         ax2.set_title(f"({'abcdef'[2 * i + 1]}) " + ("por clase" if es else "by class") + (f"\n{txt}" if txt else ""), fontsize=7, loc="left")
-    for ext_ in ("png", "pdf", "eps"):
-        fig.savefig(f"{FIG}/fig8_dcoh_C_vs_L_{idi}.{ext_}", dpi=300 if ext_ == "png" else None)
+    from estilo_figuras import guardar_formatos
+    print(guardar_formatos(fig, f"{FIG}/fig8_dcoh_C_vs_L_{idi}"))      # pdf, eps, tiff, png
     plt.close(fig)
 print(f"\nFig. 8 → {FIG}/fig8_dcoh_C_vs_L_es|en.png/pdf/eps · Tabla 4 → {OUT}/tabla4_dcoh_es|en.csv")

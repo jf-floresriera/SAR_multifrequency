@@ -123,16 +123,21 @@ def csv_bilingue(df, ruta, index=False):
     en.to_csv(f"{base}_en.csv", index=index)
 
 
-def guardar_bilingue(dibujar, base, formatos=("png",), dpi=300, mostrar=True):
-    """dibujar(idioma) -> figura. Guarda <base>_es.<fmt> y <base>_en.<fmt>; muestra solo la ES."""
+def guardar_bilingue(dibujar, base, formatos=("pdf", "eps", "tiff", "png"), dpi=300, mostrar=True):
+    """dibujar(idioma) -> figura. Guarda <base>_es.<fmt> y <base>_en.<fmt> en PDF, EPS, TIFF y PNG (siempre los cuatro,
+    aunque se pidan menos); muestra solo la ES. Always saves ES and EN in all four formats."""
     import matplotlib.pyplot as plt
     rutas = []
     for idioma in IDIOMAS:
         fig = dibujar(idioma)
-        for fmt in formatos:
+        for fmt in dict.fromkeys(tuple(formatos) + ("pdf", "eps", "tiff", "png")):
             r = f"{base}_{idioma}.{fmt}"
-            fig.savefig(r, dpi=dpi, bbox_inches="tight")
-            rutas.append(r)
+            kw = dict(dpi=600, pil_kwargs={"compression": "tiff_lzw"}) if fmt == "tiff" else dict(dpi=dpi)
+            try:
+                fig.savefig(r, format=fmt, bbox_inches="tight", **kw)
+                rutas.append(r)
+            except Exception as e:
+                print(f"   ⚠️ {os.path.basename(r)} no se pudo guardar / could not be saved: {str(e)[:80]}")
         if mostrar and idioma == "es":
             plt.show()
         plt.close(fig)

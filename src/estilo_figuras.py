@@ -179,18 +179,34 @@ def contornos_signo(ax, X, Y, Z, niveles=(-10, -5, 5, 10), cero=True):
     return cs
 
 
-def exportar(fig, base, carpeta=".", formatos=("pdf", "eps", "tiff", "png")):
-    """Un archivo por formato. EPS no admite transparencia: se evita alfa en capas vectoriales.
-    TIFF con compresión LZW a 600 dpi; PNG a 300 dpi para vista previa / one file per format."""
-    os.makedirs(carpeta, exist_ok=True)
+FORMATOS = ("pdf", "eps", "tiff", "png")     # norma del proyecto: SIEMPRE los cuatro / project rule: ALWAYS all four
+
+
+def _kw_formato(f, dpi_png=300):
+    if f == "tiff":
+        return dict(dpi=600, pil_kwargs={"compression": "tiff_lzw"})
+    if f == "png":
+        return dict(dpi=dpi_png)
+    return {}
+
+
+def guardar_formatos(fig, ruta_sin_ext, formatos=FORMATOS, dpi_png=300):
+    """Guarda <ruta_sin_ext>.{pdf,eps,tiff,png}. Siempre incluye los cuatro formatos aunque se pidan menos.
+    EPS no admite transparencia (matplotlib la vuelve opaca); si EPS falla, se avisa y siguen los demás.
+    Saves all four formats (pdf, eps, tiff, png) even if fewer are requested; an EPS failure only warns."""
+    os.makedirs(os.path.dirname(ruta_sin_ext) or ".", exist_ok=True)
     rutas = []
-    for f in formatos:
-        ruta = os.path.join(carpeta, f"{base}.{f}")
-        kw = {}
-        if f == "tiff":
-            kw = dict(dpi=600, pil_kwargs={"compression": "tiff_lzw"})
-        elif f == "png":
-            kw = dict(dpi=300)
-        fig.savefig(ruta, format=("tiff" if f == "tiff" else f), **kw)
-        rutas.append((ruta, round(os.path.getsize(ruta) / 1e6, 2)))
+    for f in dict.fromkeys(tuple(formatos) + FORMATOS):
+        ruta = f"{ruta_sin_ext}.{f}"
+        try:
+            fig.savefig(ruta, format=f, **_kw_formato(f, dpi_png))
+            rutas.append((ruta, round(os.path.getsize(ruta) / 1e6, 2)))
+        except Exception as e:
+            print(f"   ⚠️ {os.path.basename(ruta)} no se pudo guardar / could not be saved: {str(e)[:80]}")
     return rutas
+
+
+def exportar(fig, base, carpeta=".", formatos=FORMATOS):
+    """Un archivo por formato: PDF, EPS, TIFF (LZW, 600 dpi) y PNG (300 dpi). Aunque se pidan menos formatos,
+    se guardan SIEMPRE los cuatro (norma del proyecto). One file per format; always all four."""
+    return guardar_formatos(fig, os.path.join(carpeta, base), formatos)

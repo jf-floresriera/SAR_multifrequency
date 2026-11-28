@@ -397,22 +397,28 @@ class Explorador:
                   for x in um.itertuples()]
         return dict(antes=pre, despues=post, umbras=umbras)
 
-    def _alinear_umbra(self, url_post, url_u, lon, lat, lado=800, variantes=("dem", "sin", "dem_inv")):
+    def _alinear_umbra(self, url_post, url_u, lon, lat, lado=800, variantes=("dem", "sin", "dem_inv"), inicial=None, radio=None):
         """Alineación AUTOMÁTICA de una Umbra con el óptico DESPUÉS. Prueba varias correcciones de relieve
         (dem = corrección con DEM; sin = ninguna; dem_inv = sentido invertido) y, para cada una, el desplazamiento que maximiza la
-        información mutua (NMI) en ±150 m. Se queda con la combinación de mayor puntaje. Devuelve dict(dE, dN, conf, variante).
-        Automatic alignment: tries terrain-correction variants and NMI shift search, keeps the best."""
+        información mutua (NMI) en ±RADIO_ALINEACION_M ALREDEDOR de `inicial` (dict dE, dN en m; por defecto 0, 0).
+        El desfase real de las Umbra GEC aquí es de 100–250 m (medido a mano en S1), fuera de ±60 m: sin `inicial` la búsqueda
+        no puede encontrarlo. Devuelve dict(dE, dN, conf, variante) con el desfase TOTAL (inicial + refinamiento).
+        Automatic alignment: NMI shift search of ±radius around `inicial` (the real offset here is 100–250 m, so a start is needed)."""
         from scipy.ndimage import gaussian_filter, sobel, median_filter
+        e0 = float((inicial or {}).get("dE", 0) or 0); n0 = float((inicial or {}).get("dN", 0) or 0)
+        lon_u = lon + e0 / (111320 * np.cos(np.radians(lat))); lat_u = lat + n0 / 111320   # misma convención que _leer_umbra
         n = 250; px = lado / n
-        mp = int(round(min(RADIO_ALINEACION_M, 0.4 * lado) / px)); nb = n + 2 * mp   # búsqueda limitada a lo físicamente posible
+        mp = int(round(min(radio or RADIO_ALINEACION_M, 0.4 * lado) / px)); nb = n + 2 * mp
         o = self._recorte(url_post, lon, lat, lado, n=n)[:3].mean(0); o = np.where(o > 0, o, np.nan)
         if not np.isfinite(o).any():
-            return dict(dE=0, dN=0, conf=np.nan, variante="dem", puntaje=np.nan)
+            return dict(dE=int(e0), dN=int(n0), conf=np.nan, variante="sin" if inicial else "dem", puntaje=np.nan)
         o = np.where(np.isfinite(o), o, np.nanmedian(o))
+        if inicial:                       # el desfase manual se midió SIN corrección de relieve → refinar en esa misma variante
+            variantes = ("sin",)
         mejor = None
         for v in variantes:
-            u = self._recorte(url_u, lon, lat, nb * px, bandas=(1,), n=nb)[0] if v == "sin" else \
-                self._umbra_orto(url_u, lon, lat, nb * px, n=nb, invertir=(v == "dem_inv"))[0]
+            u = self._recorte(url_u, lon_u, lat_u, nb * px, bandas=(1,), n=nb)[0] if v == "sin" else \
+                self._umbra_orto(url_u, lon_u, lat_u, nb * px, n=nb, invertir=(v == "dem_inv"))[0]
             val = np.isfinite(u) & (u > 0)
             if val[mp:mp + n, mp:mp + n].mean() < 0.3:
                 continue
@@ -424,11 +430,71 @@ class Explorador:
             pun = _nmi(o1, sub) + _nmi(np.hypot(sobel(o1, 0), sobel(o1, 1)),
                                        np.hypot(sobel(gaussian_filter(sub, 1.0), 0), sobel(gaussian_filter(sub, 1.0), 1)))
             ok_ = conf >= CONF_MIN
-            r = dict(dE=int(round(dx * px / 5) * 5) if ok_ else 0, dN=int(round(-dy * px / 5) * 5) if ok_ else 0,
+            r = dict(dE=int(round((e0 + (dx * px if ok_ else 0)) / 5) * 5), dN=int(round((n0 + (-dy * px if ok_ else 0)) / 5) * 5),
                      conf=conf, variante=v, puntaje=pun)
             if mejor is None or pun > mejor["puntaje"]:
                 mejor = r
-        return mejor or dict(dE=0, dN=0, conf=np.nan, variante="dem", puntaje=np.nan)
+        return mejor or dict(dE=int(e0), dN=int(n0), conf=np.nan, variante="sin" if inicial else "dem", puntaje=np.nan)
+
+    def _alin_heredada(self, url_u, lon, lat, max_km=5.0):
+        """Desfase guardado para la MISMA escena Umbra en el sitio más cercano (≤ max_km). El desfase de una GEC depende sobre todo
+        de la escena (geolocalización, squint) y cambia poco a lo largo de la costa → buen punto de partida para sitios sin desfase.
+        Offset saved for the same Umbra scene at the nearest site (≤ max_km): a good start for sites without their own."""
+        if not os.path.exists(self.f_alin):
+            return None
+        todo = json.load(open(self.f_alin, encoding="utf-8"))
+        cand = []
+        for sitio, d in todo.items():
+            v = (d or {}).get(url_u)
+            if v and "lat" in v and "lon" in v:
+                km = np.hypot((v["lon"] - lon) * 111.32 * np.cos(np.radians(lat)), (v["lat"] - lat) * 111.32)
+                if km <= max_km:
+                    cand.append((km, sitio, v))
+        if not cand:
+            return None
+        km, sitio, v = min(cand, key=lambda t: t[0])
+        return dict(dE=v["dE"], dN=v["dN"], variante=v.get("variante", "sin"), heredado_de=sitio, km=round(float(km), 2))
+
+    def alinear_auto_sitios(self, sitios, guardar=True, radio=60.0, max_km=5.0, sobrescribir=False, umbra_inc=((48, "left"), (27, "right"))):
+        """Para cada sitio y cada Umbra (48° izq., 27° der.): parte del desfase guardado del sitio o, si no tiene, del sitio más
+        cercano con la misma escena; lo REFINA por NMI en ±radio m y lo guarda en alineacion_manual.json (variante «sin»,
+        origen «auto»). Después revise cada sitio con ex.alinear_manual(...): las barras arrancan en el valor guardado.
+        Per site and Umbra: start from saved/nearest offset, refine by NMI within ±radio, save; then check with alinear_manual."""
+        import re as _re
+        todo = json.load(open(self.f_alin, encoding="utf-8")) if os.path.exists(self.f_alin) else {}
+        filas = []
+        for s_ in sitios:
+            nombre, lat, lon = s_["nombre"], float(s_["lat"]), float(s_["lon"])
+            esc = self._escenas(lon, lat)
+            propio = todo.get(nombre, {}) or {}
+            for inc_, mir_ in umbra_inc:
+                c = [u for u in esc["umbras"] if mir_ in u[0] and abs(float(_re.search(r"inc (\d+)", u[0]).group(1)) - inc_) <= 1.5]
+                if not c:
+                    filas.append(dict(sitio=nombre, umbra=f"{inc_}° {mir_}", estado="sin escena")); continue
+                lab, url = c[0]
+                if url in propio and propio[url].get("origen") != "auto" and not sobrescribir:
+                    v = propio[url]
+                    filas.append(dict(sitio=nombre, umbra=f"{inc_}° {mir_}", dE=v["dE"], dN=v["dN"], estado="manual (se respeta)")); continue
+                ini = propio.get(url) or self._alin_heredada(url, lon, lat, max_km) or {}
+                try:
+                    al = self._alinear_umbra(esc["despues"][1], url, lon, lat, inicial=ini or None, radio=radio)
+                except Exception as e:
+                    filas.append(dict(sitio=nombre, umbra=f"{inc_}° {mir_}", estado=f"falló: {str(e)[:60]}")); continue
+                ok = np.isfinite(al["conf"]) and al["conf"] >= CONF_MIN
+                filas.append(dict(sitio=nombre, umbra=f"{inc_}° {mir_}", inicio=f"{ini.get('dE', 0)}/{ini.get('dN', 0)}"
+                                  + (f" (de {ini['heredado_de']})" if ini.get("heredado_de") else ""),
+                                  dE=al["dE"], dN=al["dN"], confianza=round(float(al["conf"]), 1) if np.isfinite(al["conf"]) else np.nan,
+                                  estado="refinado" if ok else "débil: se deja el inicio"))
+                if guardar and (ok or ini):
+                    todo.setdefault(nombre, {})[url] = dict(dE=al["dE"], dN=al["dN"], variante="sin", origen="auto",
+                                                            confianza=None if not np.isfinite(al["conf"]) else float(al["conf"]),
+                                                            fecha=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"), lat=lat, lon=lon)
+        if guardar:
+            json.dump(todo, open(self.f_alin, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+            print(f"Guardado / saved: {self.f_alin}")
+        t = pd.DataFrame(filas)
+        print(t.to_string(index=False))
+        return t
 
     def _leer_umbra(self, url, lon, lat, lado, al, n=500):
         lo_ = lon + al["dE"] / (111320 * np.cos(np.radians(lat))); la_ = lat + al["dN"] / 111320
@@ -482,15 +548,23 @@ class Explorador:
                     al = cache_al[clave_al]
                 elif alinear and esc["despues"][1]:
                     c_lon, c_lat = pt.get("centro_grupo", (lon, lat))
+                    her = self._alin_heredada(url_u, c_lon, c_lat)          # mismo Umbra en el sitio más cercano / nearest site
                     try:
-                        al = self._alinear_umbra(esc["despues"][1], url_u, c_lon, c_lat)
+                        al = self._alinear_umbra(esc["despues"][1], url_u, c_lon, c_lat, inicial=her)
+                        if her:
+                            al["heredado_de"] = her["heredado_de"]
                     except Exception as e:
                         print(f"   alineación Umbra {k} falló: {str(e)[:80]}")
+                        if her:
+                            al = dict(dE=her["dE"], dN=her["dN"], conf=np.nan, variante="sin", puntaje=np.nan, heredado_de=her["heredado_de"])
                 cache_al[clave_al] = al
                 alin.append(al)
                 print(f"   Umbra {k} ({lab_u.split('·')[-2].strip()}, {lab_u.split('·')[-1].strip()}): ΔE {al['dE']} m, ΔN {al['dN']} m, "
-                      + ("desfase MANUAL guardado / saved manual offset" if "fecha" in al else
-                         f"corrección «{al['variante']}», confianza {al['conf']:.1f}σ" + ("" if al["conf"] >= CONF_MIN else " (débil: desfase dejado en 0)")))
+                      + (("desfase AUTO guardado (revisar con alinear_manual)" if al.get("origen") == "auto" else
+                          "desfase MANUAL guardado / saved manual offset") if "fecha" in al else
+                         (f"partiendo de {al['heredado_de']} · " if al.get("heredado_de") else "")
+                         + f"corrección «{al['variante']}», confianza {al['conf']:.1f}σ"
+                         + ("" if al["conf"] >= CONF_MIN else (" (débil: se deja el heredado)" if al.get("heredado_de") else " (débil: desfase dejado en 0)"))))
             for lado in lados:
                 lado = float(lado)
                 n_px = int(min(3000, round(lado / px_m)))              # alta resolución: ~0,35 m/píxel / high resolution
@@ -539,8 +613,8 @@ class Explorador:
                 for idi in ("es", "en"):
                     f_ = self._figura(capas, idi, cx, cy, lado, dvc, fila, ancho)
                     f_.savefig(f"{self.capturas}/ELEGIDA_{fila['config']}_{int(lado)}m_{idi}.png", dpi=dpi)
-                    for ext_ in ("png", "pdf"):
-                        f_.savefig(f"{d}/vista_{fila['config']}_{idi}.{ext_}", dpi=dpi)
+                    from estilo_figuras import guardar_formatos
+                    guardar_formatos(f_, f"{d}/vista_{fila['config']}_{idi}", dpi_png=dpi)   # pdf, eps, tiff, png
                     if idi == "es":
                         display(f_)
                     plt.close(f_)
@@ -574,7 +648,7 @@ class Explorador:
             return json.load(open(self.f_alin, encoding="utf-8")).get(sitio)
         return None
 
-    def alinear_manual(self, sitio, lat, lon, lado=500, inicial=None, margen=350, px=1.0):
+    def alinear_manual(self, sitio, lat, lon, lado=500, inicial=None, margen=350, px=1.0, umbra_inc=((48, "left"), (27, "right"))):
         """ALINEACIÓN MANUAL con puntos de referencia: barras ΔE/ΔN para cada Umbra (1 y 2), con los BORDES del óptico en
         verde y una cuadrícula cada 50 m encima de la Umbra. «Guardar» escribe el desfase del sitio en
         05_documentacion/alineacion_manual.json; ex.teselas() y ex.lote() lo usan automáticamente para ese sitio.
@@ -586,12 +660,12 @@ class Explorador:
         esc = self._escenas(lon, lat)
         import re as _re
         ums = []
-        for inc_, mir_ in ((48, "left"), (27, "right")):
+        for inc_, mir_ in umbra_inc:
             c = [u for u in esc["umbras"] if mir_ in u[0] and abs(float(_re.search(r"inc (\d+)", u[0]).group(1)) - inc_) <= 1.5]
             if c:
                 ums.append(c[0])
         if not ums:
-            print("Este sitio no tiene las Umbra de 48° izq. ni 27° der."); return
+            print(f"Este sitio no tiene las Umbra pedidas {list(umbra_inc)} / no requested Umbra scenes"); return
         n = int(round(lado / px)); mpx = int(round(margen / px)); nb = n + 2 * mpx
         print("Leyendo imágenes (una sola vez)… / reading images once…")
         opt = self._recorte(esc["despues"][1], lon, lat, lado, n=n)[:3]
@@ -603,7 +677,9 @@ class Explorador:
         for k, (lab, url) in enumerate(ums, start=1):
             a = self._recorte(url, lon, lat, nb * px, bandas=(1,), n=nb)[0]
             U.append(self._sar(a[None]))
-            v0 = guardada.get(url, {}) or (inicial or {}).get(k, {})
+            v0 = guardada.get(url, {}) or self._alin_heredada(url, lon, lat) or (inicial or {}).get(k, {}) or {}
+            if v0.get("heredado_de"):
+                print(f"   Umbra {k}: arranca con el desfase de {v0['heredado_de']} ({v0['km']} km): ΔE {v0['dE']} ΔN {v0['dN']} m")
             sl.append((w.IntSlider(value=int(v0.get("dE", 0)), min=-margen, max=margen, step=5, description=f"U{k} ΔE (m)",
                                    continuous_update=False, layout=w.Layout(width="420px")),
                        w.IntSlider(value=int(v0.get("dN", 0)), min=-margen, max=margen, step=5, description=f"U{k} ΔN (m)",
@@ -636,8 +712,8 @@ class Explorador:
 
         def guardar(_):
             todo = json.load(open(self.f_alin, encoding="utf-8")) if os.path.exists(self.f_alin) else {}
-            todo[sitio] = {url: dict(dE=sE.value, dN=sN.value, variante="sin", fecha=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
-                                     lat=lat, lon=lon) for (lab, url), (sE, sN) in zip(ums, sl)}
+            todo.setdefault(sitio, {}).update({url: dict(dE=sE.value, dN=sN.value, variante="sin", fecha=pd.Timestamp.now().strftime("%Y-%m-%d %H:%M"),
+                                                         lat=lat, lon=lon) for (lab, url), (sE, sN) in zip(ums, sl)})   # conserva otras escenas del sitio
             json.dump(todo, open(self.f_alin, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
             msg.value = f"✅ Desfase de <b>{sitio}</b> guardado: " + " · ".join(f"U{k + 1} ΔE {a.value} ΔN {b.value} m" for k, (a, b) in enumerate(sl))
         bg.on_click(guardar)
@@ -793,8 +869,8 @@ class Explorador:
                 fig.text(0.30 / ancho, y0 + lado_p / alto / 2,
                          f"{fila['zona']} · {fila['ventana_m']:.0f} m\n{fila['lat']:.4f}°N {abs(fila['lon']):.4f}°W",
                          rotation=90, ha="right", va="center", fontsize=6.5)
-            for ext_ in ("png", "pdf", "eps"):
-                fig.savefig(f"{self.raiz}/04_figuras/suplemento/{nombre}_{idi}.{ext_}", dpi=300 if ext_ == "png" else None)
+            from estilo_figuras import guardar_formatos
+            guardar_formatos(fig, f"{self.raiz}/04_figuras/suplemento/{nombre}_{idi}")     # pdf, eps, tiff, png
             if idi == "es":
                 from IPython.display import display
                 display(fig)

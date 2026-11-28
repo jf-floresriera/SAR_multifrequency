@@ -204,7 +204,7 @@ for idi in ("es", "en"):
     fig.suptitle(("Índices de banda X (Umbra) por edificio — δ de Cliff: destruido vs sin daño" if idi == "es" else
                   "X-band (Umbra) per-building indices — Cliff's δ: destroyed vs undamaged"), fontsize=8.5, x=0.01, ha="left")
     fig.tight_layout()
-    for ext_ in ("png", "pdf", "eps"):
-        fig.savefig(f"{FIG}/fig9_indices_banda_x_{idi}.{ext_}", dpi=300 if ext_ == "png" else None)
+    from estilo_figuras import guardar_formatos
+    print(guardar_formatos(fig, f"{FIG}/fig9_indices_banda_x_{idi}"))   # pdf, eps, tiff, png
     plt.close(fig)
 print(f"\nFig. 9 → {FIG}/fig9_indices_banda_x_es|en.png/pdf/eps · Tabla 3 → {SALIDA}/tabla3_kruskal_cliff_es|en.csv")

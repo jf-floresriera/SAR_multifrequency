@@ -24,6 +24,12 @@
 | 2026-11-26 | Anti-duplicados HyP3 / HyP3 anti-duplicates | clave = par de escenas + tipo (`src/registro_datos.py`) | Antes se comparaba el nombre; 033A (`Sismo_LaGuaira_S1_Path33`, 5-nov, INT80) habría sido reenviado y 025D se envió 4 veces. Ahora: 1º ZIP en Drive, 2º trabajo vigente con el mismo par, 3º recién enviar. `FORZAR_ENVIO=True` para repetir a propósito |
 | 2026-11-26 | 033A a 80 m / 033A at 80 m | se usa INT80 ya descargado (no reenviar a 40 m) | La grilla común es 80 m; 40 m solo aporta si se analiza escala urbana con C |
 
+| 2026-11-27 | Composición óptica / optical composition | antes Vantor 21-mar · después Vantor 29-jun · Umbra 48° izq. + 27° der. | Elegida por el autor; sitios S1–S4 (costa de Catia La Mar–Playa Grande) |
+| 2026-11-27 | Desfase Umbra GEC ↔ óptico | 120–220 m, distinto por escena; la de 48° (squint 29°) además está deformada | Un desfase por ventana de ≤ 500–700 m; manual en S1: U1 +125/−80 m, U2 −60/+100 m |
+| 2026-11-27 | Par pre-sísmico S-1 033A | FAILED en HyP3 | Probable poco solape entre los cortes S1D 13-jun y S1A 18-jun; diagnosticar antes de reenviar |
+| 2026-11-28 | Alineación automática | busca ±60 m alrededor de un desfase de partida (manual o heredado del sitio más cercano con la misma escena), no alrededor de 0 | Con partida 0 nunca podía hallar 120–220 m; S2–S4 se habían dibujado sin desfase |
+| 2026-11-28 | Óptico completo en Drive | `descargar_opticos.py`: todos los activos GeoTIFF de Vantor y Planet en la zona | Antes solo se leían ventanas por internet; CC BY-NC → solo Drive |
+
 ## Pendientes / To do
 - [ ] Coordenadas exactas de CCS1 (ficha NGL / IGVSB)
 - [ ] ALOS-2 ScanSAR L1.1: descargar (ASF/JAXA) y procesar con GMTSAR o ISCE2

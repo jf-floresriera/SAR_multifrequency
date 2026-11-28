@@ -53,7 +53,7 @@ for carpeta in sorted(glob.glob(f"{S1_IN}/S1*_INT*")):
     with rasterio.open(unw[0]) as s:
         fase = s.read(1).astype("float32"); perfil = s.profile
     fase[fase == 0] = np.nan
-    perfil.update(dtype="float32", nodata=np.nan, compress="deflate")
+    perfil.update(dtype="float32", nodata=np.nan, compress="deflate", tiled=True, blockxsize=256, blockysize=256)  # sin aviso BLOCKXSIZE
     with rasterio.open(f"{S1_OUT}/{nombre}_los_m.tif", "w", **perfil) as d:
         d.write(SIGNO_S1 * fase * LAMBDA_S1 / (4 * np.pi), 1)
     for suf, sal in (("_corr.tif", "_coh.tif"),):

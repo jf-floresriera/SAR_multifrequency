@@ -197,7 +197,7 @@ for idi in ("es", "en"):
             ax.scatter(g_.x, g_.y, s=1.5, c=COL[c], lw=0, label=(c if es else CLASES_EN[c]))
         ax.set_xlim(x0, x1); ax.set_ylim(y0, y1); ax.set_xticks([]); ax.set_yticks([]); sin_etiquetas(ax)
         b_, g_ = k
-        ax.set_title(f"({'abcdef'[2 * i]}) ΔCOH {('banda' if es else 'band')} {b_} · {('Sentinel-1' if b_ == 'C' else 'NISAR')} {g_}",
+        ax.set_title(f"({'abcdefghijklmnop'[2 * i]}) ΔCOH {('banda' if es else 'band')} {b_} · {('Sentinel-1' if b_ == 'C' else 'NISAR')} {g_}",
                      fontsize=8, loc="left")
         cb = fig.colorbar(im, ax=ax, fraction=0.025, pad=0.01); cb.ax.tick_params(labelsize=6)
         cb.set_label("ΔCOH", fontsize=6.5)
@@ -213,7 +213,7 @@ for idi in ("es", "en"):
         ax2.tick_params(labelsize=6.5); ax2.set_ylabel("ΔCOH = coh pre − coh co", fontsize=6.5)
         r_ = R[(R.banda == b_) & (R.geometria == g_)]
         txt = f"δ = {r_.delta_destruido_vs_sin.iloc[0]:+.2f} · AUC = {r_.auc_destruido.iloc[0]:.2f}" if len(r_) else ""
-        ax2.set_title(f"({'abcdef'[2 * i + 1]}) " + ("por clase" if es else "by class") + (f"\n{txt}" if txt else ""), fontsize=7, loc="left")
+        ax2.set_title(f"({'abcdefghijklmnop'[2 * i + 1]}) " + ("por clase" if es else "by class") + (f"\n{txt}" if txt else ""), fontsize=7, loc="left")
     from estilo_figuras import guardar_formatos
     print(guardar_formatos(fig, f"{FIG}/fig8_dcoh_C_vs_L_{idi}"))      # pdf, eps, tiff, png
     plt.close(fig)

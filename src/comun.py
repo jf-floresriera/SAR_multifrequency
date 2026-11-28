@@ -168,6 +168,22 @@ def correr(script, carpeta_logs, src, notebook="", version=""):
     """Ejecuta src/<script> con %run -i y guarda TODO lo impreso (y errores) en un .log en Drive.
     Runs src/<script> with %run -i and saves ALL printed output (and errors) to a .log in Drive."""
     from IPython import get_ipython
+    # git pull automático antes de cada script: así una corrección subida a GitHub se usa sin volver a correr la celda 0.
+    # Automatic git pull before each script, so fixes pushed to GitHub are used without re-running cell 0.
+    import subprocess
+    repo = os.path.dirname(os.path.abspath(src))
+    if os.path.isdir(os.path.join(repo, ".git")):
+        try:
+            antes = subprocess.run(["git", "-C", repo, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+            subprocess.run(["git", "-C", repo, "pull", "-q", "--ff-only"], capture_output=True, text=True, timeout=60)
+            ahora = subprocess.run(["git", "-C", repo, "rev-parse", "--short", "HEAD"], capture_output=True, text=True).stdout.strip()
+            if ahora and ahora != antes:
+                nuevos = subprocess.run(["git", "-C", repo, "log", "--oneline", "--no-merges", f"{antes}..{ahora}"],
+                                        capture_output=True, text=True).stdout.strip()
+                print(f"🔄 Código actualizado desde GitHub / code updated: {antes} → {ahora}\n{nuevos}\n")
+                version = ahora
+        except Exception as e:
+            print(f"(sin git pull / no git pull: {str(e)[:60]}; se usa el código actual / using current code)")
     os.makedirs(carpeta_logs, exist_ok=True)
     marca = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     ruta = os.path.join(carpeta_logs, f"{marca}_{notebook}_{script.replace('.py', '')}.log")

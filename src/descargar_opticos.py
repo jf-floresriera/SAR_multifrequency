@@ -95,45 +95,49 @@ if "vantor" in FUENTES:
                                   nubes_pct=p.get("eo:cloud_cover"), activo=k, bandas=len(a.get("eo:bands", []) or []) or None,
                                   url=href, destino=f"{carpeta}/{k}.tif", item=j, carpeta=carpeta))
 
-# ------------------------------------------------------------------ Planet (source.coop, ítems en parquet)
-if "planet" in FUENTES:
+# ------------------------------------------------------------------ Planet (source.coop, catálogo STAC estático)
+# Los activos tienen rutas RELATIVAS a la ficha de cada escena (p. ej. post-event/caracas/items/<id>.json → ./<id>_visual.tif).
+# Se recorre collection.json → fichas y se resuelve cada href desde la URL de SU ficha (antes se resolvía desde la carpeta
+# del evento: 404 y tamaño 0). Asset hrefs are relative to each item JSON: walk collection.json → items and resolve per item.
+def _fichas(url, prof=0):
     try:
-        import geopandas as gpd
-        for fase in ("post-event", "pre-event"):
-            try:
-                pq = gpd.read_parquet(io.BytesIO(requests.get(f"{PLANET}/{fase}/items.parquet", timeout=180).content))
-            except Exception as e:
-                print(f"Planet {fase}: sin items.parquet ({str(e)[:60]})"); continue
-            pq = pq.to_crs(4326)
-            for r in pq.itertuples():
-                if not _toca(r.geometry.bounds):
-                    continue
-                fecha = str(getattr(r, "datetime", ""))[:10]
-                carpeta = f"{RAIZ}/01_datos_crudos/planet/{fase}_{fecha}_{r.id}"
-                assets = getattr(r, "assets", None)
-                assets = json.loads(assets) if isinstance(assets, str) else (assets or {})
-                for k, a in (assets.items() if isinstance(assets, dict) else []):
-                    href = (a or {}).get("href", "") if isinstance(a, dict) else ""
-                    if href and href.split("?")[0].endswith(EXT):
-                        href = _abs(href, f"{PLANET}/{fase}/")
-                        filas.append(dict(fuente="Planet", id=r.id, fase=fase, fecha=fecha, nubes_pct=getattr(r, "eo:cloud_cover", None),
-                                          activo=k, bandas=None, url=href, destino=f"{carpeta}/{k}.tif", item=None, carpeta=carpeta))
-        # respaldo: URLs ya resueltas por danio_sitios (una por ítem) / fallback: URLs resolved earlier
-        f_urls = f"{TRAB}/umbra_planet_sitios/planet_urls.csv"
-        if os.path.exists(f_urls) and not any(f["fuente"] == "Planet" for f in filas):
-            for r in pd.read_csv(f_urls).dropna(subset=["url"]).itertuples():
-                filas.append(dict(fuente="Planet", id=r.id, fase="post-event", fecha="", nubes_pct=None, activo="visual", bandas=None,
-                                  url=r.url, destino=f"{RAIZ}/01_datos_crudos/planet/post-event_{r.id}/visual.tif", item=None,
-                                  carpeta=f"{RAIZ}/01_datos_crudos/planet/post-event_{r.id}"))
-    except ImportError:
-        print("Falta geopandas / geopandas missing")
+        c = requests.get(url, timeout=60).json()
+    except Exception as e:
+        print(f"   sin acceso / no access: {url} ({str(e)[:50]})"); return
+    if c.get("type") == "Feature":
+        yield url, c; return
+    for l in c.get("links", []):
+        if l.get("rel") in ("item", "child") and prof < 4:
+            yield from _fichas(_abs(l["href"], url), prof + 1)
+
+
+if "planet" in FUENTES:
+    for fase in ("post-event", "pre-event"):
+        n = 0
+        for u_item, j in _fichas(f"{PLANET}/{fase}/collection.json"):
+            if not j.get("bbox") or not _toca(j["bbox"]):
+                continue
+            p = j.get("properties", {})
+            fecha = str(p.get("datetime") or p.get("start_datetime") or "")[:10]
+            carpeta = f"{RAIZ}/01_datos_crudos/planet/{fase}_{fecha}_{j['id']}"
+            for k, a in (j.get("assets") or {}).items():
+                href = (a or {}).get("href", "")
+                if href and href.split("?")[0].endswith(EXT):
+                    filas.append(dict(fuente="Planet", id=j["id"], fase=fase, fecha=fecha, nubes_pct=p.get("eo:cloud_cover"),
+                                      activo=k, bandas=len(a.get("bands", []) or a.get("eo:bands", []) or []) or None,
+                                      url=_abs(href, u_item), destino=f"{carpeta}/{k}.tif", item=j, carpeta=carpeta,
+                                      bytes_stac=a.get("file:size")))
+                    n += 1
+        print(f"Planet {fase}: {n} archivos en la zona / files in the area")
 
 T = pd.DataFrame(filas)
 if T.empty:
     print("No hay escenas ópticas en la zona / no optical scenes in the area")
     T = pd.DataFrame(columns=["fuente", "id", "fase", "fecha", "nubes_pct", "activo", "bandas", "url", "destino", "item", "carpeta"])
 print(f"Calculando tamaños de {len(T)} archivos… / sizing files…")
-T["GB"] = [round(_tam(u) / 1e9, 2) for u in T.url]
+if "bytes_stac" not in T:
+    T["bytes_stac"] = None
+T["GB"] = [round((b if b and b == b else _tam(u)) / 1e9, 2) for u, b in zip(T.url, T.bytes_stac)]
 T["en_drive"] = [os.path.exists(d) and os.path.getsize(d) > 0 and (g == 0 or abs(os.path.getsize(d) / 1e9 - g) < 0.01)
                  for d, g in zip(T.destino, T.GB)]
 if (T.GB == 0).any():
@@ -161,7 +165,7 @@ else:
     print("\nSolo inventario. Para bajar / to download:  DESCARGAR = True; correr(\"descargar_opticos.py\")")
 
 os.makedirs(DOC, exist_ok=True)
-sal = T.drop(columns=["item", "carpeta"])
+sal = T.drop(columns=["item", "carpeta", "bytes_stac"], errors="ignore")
 sal.to_csv(f"{DOC}/inventario_optico_descargado.csv", index=False)
 sal.rename(columns=dict(fuente="source", fase="phase", fecha="date", nubes_pct="cloud_pct", activo="asset", bandas="bands",
                         destino="path", en_drive="on_drive")).to_csv(f"{DOC}/inventario_optico_descargado_en.csv", index=False)
